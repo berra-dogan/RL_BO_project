@@ -1,162 +1,114 @@
-import numpy as np
-import torch
-from sklearn.gaussian_process.kernels import WhiteKernel, RBF
-from sklearn.gaussian_process import GaussianProcessRegressor
-from functools import partial
-import pandas as pd
-import multiprocessing as mp
-from dataclasses import dataclass
-
 from rl_bo import RL_BO
 from utils import Scaler
 from objective_functions import ObjectiveFunctions
+from config import ExperimentConfig
+
+import numpy as np
+import torch
+import pandas as pd
+import multiprocessing as mp
+import time
+from functools import partial
+from sklearn.gaussian_process import GaussianProcessRegressor
+from sklearn.gaussian_process.kernels import RBF, WhiteKernel
 
 
-def run_single_experiment(seed, X_start_candidate, policy_file_num, test_func_name, dimension, num_experiments,
-                          num_initial_data, lower_bound, upper_bound, horizon):
-    try:
-        import time  # Add time import for tracking decision times
+class BOEngine:
+    """Handles the execution of a single Bayesian Optimization trial."""
+    
+    @staticmethod
+    def run_trial(seed, x_start, policy_num, config: ExperimentConfig):
+        try:
+            # 1. Setup
+            np.random.seed(seed)
+            torch.manual_seed(seed)
+            obj_funcs = ObjectiveFunctions(config.dimension)
+            test_func = obj_funcs.functions[config.test_func_name] # Uses robust getter
+            
+            x_train, y_train = x_start, test_func.real(x_start).reshape(-1, 1)
+            
+            # 2. Models
+            # CHANGED
+            kernel = RBF(length_scale=1.0, length_scale_bounds=(1e-2, 1e2)) + WhiteKernel(noise_level=1, noise_level_bounds=(1e-10, 1e1))
+            gpr = GaussianProcessRegressor(
+                kernel=kernel, 
+                alpha=1e-10,  # Small jitter for stability
+                n_restarts_optimizer=10
+            )
+            scaler, acq_func = Scaler(), RL_BO()
+            
+            regrets, decision_times = [], []
+            bounds = (np.full(config.dimension, config.lower_bound), 
+                      np.full(config.dimension, config.upper_bound))
 
-        np.random.seed(seed)
-        torch.manual_seed(seed)
-        obj_funcs = ObjectiveFunctions(dimension)
-        test_func = obj_funcs.functions[test_func_name]
-        y_max_real = 0
-        GP_lengthscale = 1
+            # 3. Optimization Loop
+            for j in range(config.num_experiments):
+                acq_func.horizon = config.horizon
+                
+                # Pre-process
+                y_scaled = scaler.fit_transform(y_train)
+                x_scaled = scaler.fit_transform(x_train)
+                gpr.fit(x_scaled, y_scaled)
 
-        regrets = []
-        X_train = X_start_candidate
-        y_train = test_func.real(X_train).reshape(-1, 1)
-        y_max = np.max(y_train)
-        print(-y_max)
-        regret = y_max_real - y_max
-        regrets.append(regret)
+                # Step
+                start_t = time.time()
+                x_next_scaled = acq_func.evaluate(
+                    gpr, np.max(y_scaled), x_scaled, y_scaled, 
+                    bounds[0], bounds[1], policy_num, config.horizon
+                )
+                decision_times.append(time.time() - start_t)
 
-        action_min = np.array([lower_bound] * dimension)
-        action_max = np.array([upper_bound] * dimension)
+                # Post-process and Update
+                x_next = scaler.inverse_transform_mean(x_next_scaled)
+                y_next = test_func.real(x_next)
+                
+                x_train = np.vstack((x_train, x_next))
+                y_train = np.vstack((y_train, y_next))
+                regrets.append(0 - np.max(y_train)) # Assuming global max is 0
 
-        # Surrogate model
-        kernel = RBF(GP_lengthscale, (1e-2, 1e2)) + WhiteKernel(noise_level=1, noise_level_bounds=(1e-10, 1e1))
-        gpr = GaussianProcessRegressor(kernel=kernel, n_restarts_optimizer=10)
+            return regrets, np.mean(decision_times), np.std(decision_times)
 
-        scaler = Scaler()
-        acq_func = RL_BO()
+        except Exception as e:
+            print(f"Trial {seed} failed: {e}")
+            return None
 
-        # Create a list to store decision times
-        decision_times = []
+def main():
+    # 1. Initialize Configuration
+    config = ExperimentConfig()
+    print(f"Starting {config.dimension}D {config.test_func_name} experiments...")
 
-        for j in range(num_experiments):
-            acq_func.horizon = horizon
-            scaler.fit(y_train)
-            y_train_scaled = scaler.transform(y_train)
-            scaler.fit(X_train)
-            X_train_scaled = scaler.transform(X_train)
-            gpr.fit(X_train_scaled, y_train_scaled)
-            y_max_scaled = np.max(y_train_scaled)
+    # 2. Prepare Starting Points
+    np.random.seed(1)
+    x_starts = [
+        np.random.uniform(-15, 15, (config.num_initial_data, config.dimension)) 
+        for _ in range(config.num_runs)
+    ]
 
-            # Start timing the decision process
-            start_time = time.time()
-            print(f"\n===== Running iteration {j + 1}/{num_experiments} for seed {seed} =====")
+    # 3. Parallel Execution
+    # partial fixes the config argument so starmap only needs trial-specific data
+    worker_fn = partial(BOEngine.run_trial, config=config)
+    tasks = [(i, x_starts[i], i + 1) for i in range(config.num_runs)]
 
-            X_next = acq_func.evaluate(gpr, y_max_scaled, X_train_scaled, y_train_scaled, action_min, action_max,
-                                       policy_file_num, horizon)
+    with mp.Pool(processes=config.num_workers) as pool:
+        results = pool.starmap(worker_fn, tasks)
 
-            # End timing and store the elapsed time
-            elapsed_time = time.time() - start_time
-            decision_times.append(elapsed_time)
-            print(f"Decision {j + 1}/{num_experiments} took {elapsed_time:.4f} seconds")
+    # 4. Filter and Aggregate Data
+    results = [r for r in results if r is not None]
+    if not results:
+        return
 
-            X_next = scaler.inverse_transform_mean(X_next)
-            y_next = test_func.real(X_next)
-            X_train = np.vstack((X_train, X_next))
-            y_train = np.vstack((y_train, y_next))
+    regrets = np.array([r[0] for r in results])
+    df = pd.DataFrame({
+        'Avg Regret': np.mean(regrets, axis=0),
+        'Std Regret': np.std(regrets, axis=0),
+        'Avg Time': np.mean([r[1] for r in results]),
+        'Std Time': np.mean([r[2] for r in results])
+    })
 
-            y_max = np.max(y_train)
-            regret = y_max_real - y_max
-            regrets.append(regret)
-
-        # Calculate timing statistics
-        avg_decision_time = np.mean(decision_times)
-        std_decision_time = np.std(decision_times)
-        print(f"Average decision time: {avg_decision_time:.4f} seconds, Std: {std_decision_time:.4f} seconds")
-
-        # Return timing statistics along with regrets
-        return regrets, avg_decision_time, std_decision_time
-
-    except Exception as e:
-        print(f"Error in experiment with seed {seed}: {str(e)}")
-        return None
-
-@dataclass
-class ExperimentConfig:
-    """Container for experiment hyperparameters."""
-    dimension = 30
-    test_func_name = 'ackley' #'Ackley', 'Sum_square', 'Levy', 'Rosenbrock'
-    num_runs = 1
-    horizons = [3]  # List of horizons to run
-    num_experiments = 1
-    num_initial_data = 30
-    lower_bound = -2 #normalized bound
-    upper_bound = 2  #normalized bound
-    num_workers = 10  # Fixed number of workers
-
+    # 5. Save
+    filename = f'RL_BO_{config.dimension}D_{config.test_func_name}_h{config.horizon}.csv'
+    df.to_csv(filename, index=False)
+    print(f"Results saved to {filename}")
 
 if __name__ == '__main__':
-    config = ExperimentConfig()
-    # Run for each horizon in the list
-    for horizon in config.horizons:
-        print(f"Starting experiments with horizon = {horizon}")
-
-        np.random.seed(1)
-        X_start_candidates = [np.random.uniform(low=-15, high=15, size=(config.num_initial_data, config.dimension)) for _ in
-                              range(config.num_runs)]
-
-        # Prepare the partial function with fixed arguments
-        partial_run_experiment = partial(
-            run_single_experiment,
-            test_func_name=config.test_func_name,
-            dimension=config.dimension,
-            num_experiments=config.num_experiments,
-            num_initial_data=config.num_initial_data,
-            lower_bound=config.lower_bound,
-            upper_bound=config.upper_bound,
-            horizon=horizon
-        )
-
-        # Create a pool of workers with fixed number
-        with mp.Pool(processes=config.num_workers) as pool:
-            # Run the experiments in parallel
-            results = pool.starmap(partial_run_experiment,
-                                   [(i, X_start_candidates[i], i + 1)
-                                    for i in range(config.num_runs)])
-
-        # Filter out None results (from failed experiments)
-        results = [r for r in results if r is not None]
-
-        # Separate regrets and timing data
-        regret_store = np.array([r[0] for r in results])
-        decision_times_avg = np.array([r[1] for r in results])
-        decision_times_std = np.array([r[2] for r in results])
-
-        # Process the regret results
-        avg_regret = np.mean(regret_store, axis=0)
-        avg_std = np.std(regret_store, axis=0)
-
-        # Calculate overall timing statistics
-        overall_avg_decision_time = np.mean(decision_times_avg)
-        overall_std_decision_time = np.mean(decision_times_std)
-
-        # Create DataFrame with both regret and timing data
-        df = pd.DataFrame({
-            'Avg Regret': avg_regret,
-            'Avg Std': avg_std,
-            'Avg Decision Time': overall_avg_decision_time,
-            'Std Decision Time': overall_std_decision_time
-        })
-
-        filename = f'RL_BO_{config.dimension}D_{config.test_func_name}_h{horizon}.csv'
-        df.to_csv(filename, index=False)
-        print(f"Experiment completed for horizon {horizon}. Results saved to '{filename}'.")
-        print(f"Average decision time: {overall_avg_decision_time:.4f}s, Std: {overall_std_decision_time:.4f}s")
-
-    print("All experiments for all horizons completed.")
+    main()

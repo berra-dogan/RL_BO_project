@@ -4,6 +4,7 @@ import torch.nn as nn
 from torch.distributions import MultivariateNormal
 import torch.optim as optim
 from copy import deepcopy
+from config import PPOConfig
 
 # Define the ActorCritic neural network for the PPO agent
 class ActorCritic(nn.Module):
@@ -72,32 +73,17 @@ class ActorCritic(nn.Module):
 
 # Define the PPO agent class
 class PPO_Agent:
-    def __init__(self, num_state, num_action, device = "cpu"):
-        # Initialize PPO agent parameters
-
+    def __init__(self, num_state, num_action, config: PPOConfig = PPOConfig(), device = "cpu"):
         self.device = device
-
+        self.config = config
         self.num_state = num_state
         self.num_action = num_action
-        self.learning_rate = 0.001
-        self.action_std = 0.1
-        self.K_epochs = 100
-        self.eps_clip = 0.2
-        self.betas = (0.9, 0.999)
-        self.action_decay = 0.99
-        self.gamma = 0.95
-        self.gamma_increase = 1
-        self.VF_coeff = 0.5
-        self.Entropy_coeff = 0.01
-        self.action_std_min = 0.01
-        self.freeze_num = 2
-
-        # Initialize the policy and old policy networks
-        self.policy = ActorCritic(self.num_state, self.num_action, self.action_std).to(self.device)
-        self.optimizer = optim.Adam(self.policy.parameters(), lr=self.learning_rate, betas=self.betas)
-        self.policy_old = ActorCritic(self.num_state, self.num_action, self.action_std).to(self.device)
-        self.policy_old.load_state_dict(self.policy.state_dict())
+        self.policy = ActorCritic(num_state, num_action, config.action_std).to(self.device)
+        self.policy_old = deepcopy(self.policy)
+        self.optimizer = optim.Adam(self.policy.parameters(), lr=config.learning_rate, betas=config.betas)
         self.MseLoss = nn.MSELoss()
+        self.action_std = config.action_std
+        self.gamma = self.config.gamma
 
     def get_action(self, state, memory):
         # Get an action from the current policy
@@ -118,7 +104,7 @@ class PPO_Agent:
 
     def update(self, memory, encoder_optimizer):
         # Update the policy using PPO
-        self.action_std = max(self.action_std * self.action_decay, self.action_std_min)
+        self.action_std = max(self.action_std * self.config.action_decay, self.config.action_std_min)
         # Compute returns and advantages
         rewards = []
         discounted_reward = 0
@@ -135,14 +121,14 @@ class PPO_Agent:
         old_actions = torch.stack([action.reshape(-1) for action in memory.actions]).to(self.device).detach()
         old_logprobs = torch.stack(memory.logprobs).to(self.device).detach()
         # Optimize policy for K epochs
-        for _ in range(self.K_epochs):
+        for _ in range(self.config.K_epochs):
             logprobs, state_values, dist_entropy = self.policy.evaluate(old_states, old_actions)
             ratios = torch.exp(logprobs - old_logprobs.detach())
             advantages = rewards - state_values.detach()
             surr1 = ratios * advantages
-            surr2 = torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip) * advantages
-            loss = -torch.min(surr1, surr2) + self.VF_coeff * self.MseLoss(state_values,
-                                                                           rewards) - self.Entropy_coeff * dist_entropy
+            surr2 = torch.clamp(ratios, 1 - self.config.eps_clip, 1 + self.eps_clip) * advantages
+            loss = -torch.min(surr1, surr2) + self.config.VF_coeff * self.MseLoss(state_values,
+                                                                           rewards) - self.config.Entropy_coeff * dist_entropy
 
             self.optimizer.zero_grad()
             encoder_optimizer.zero_grad()
@@ -153,7 +139,7 @@ class PPO_Agent:
         self.policy_old.load_state_dict(self.policy.state_dict())
         self.policy.action_var = torch.full((self.num_action,), self.action_std * self.action_std).to(self.device)
         self.policy_old.action_var = torch.full((self.num_action,), self.action_std * self.action_std).to(self.device)
-        self.gamma = 1 - self.gamma_increase * (1 - self.gamma)
+        self.gamma = 1 - self.config.gamma_increase * (1 - self.gamma)
 
     def update_initial(self, memory):
         # Initial update of the policy (used for off-policy learning)
@@ -185,7 +171,7 @@ class PPO_Agent:
         self.policy_old.load_state_dict(self.policy.state_dict())
         self.policy.action_var = torch.full((self.num_action,), self.action_std * self.action_std).to(self.device)
         self.policy_old.action_var = torch.full((self.num_action,), self.action_std * self.action_std).to(self.device)
-        self.gamma = 1 - self.gamma_increase * (1 - self.gamma)
+        self.gamma = 1 - self.config.gamma_increase * (1 - self.gamma)
 
     def transfer_learning(self, policy_file_num):
         # Store the initial policy parameters in memory rather than on disk
@@ -196,7 +182,7 @@ class PPO_Agent:
         self.policy.load_state_dict(initial_policy_params)
 
         # Freeze specified layers
-        for w in range(self.freeze_num):
+        for w in range(self.config.freeze_num):
             self.policy.actor[2 * w].weight.requires_grad = False
             self.policy.actor[2 * w].bias.requires_grad = False
             self.policy.critic[2 * w].weight.requires_grad = False
@@ -205,8 +191,8 @@ class PPO_Agent:
         # Update optimizer to only train unfrozen parameters
         self.optimizer = optim.Adam(
             filter(lambda p: p.requires_grad, self.policy.parameters()),
-            lr=self.learning_rate,
-            betas=self.betas
+            lr=self.config.learning_rate,
+            betas=self.config.betas
         )
 
         # Update old policy

@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from objective_functions import ObjectiveFunctions
-from bo import BayesianOptimizer
+from EARL_BO.ideas.bo import BayesianOptimizer
 
 @dataclass
 class ExperimentConfig:
