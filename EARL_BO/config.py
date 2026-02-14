@@ -5,16 +5,12 @@ from typing import List
 # -------------------------------
 # General settings
 # -------------------------------
-# @dataclass
-# class GeneralConfig:
-#     device: str = "cuda"  # or "cpu"
-#     seed: int = 1
-#     max_episodes: int = 4000
-#     update_episode: int = 50
-#     off_policy_episodes: int = 400
-#     horizon: int = 5
-#     no_improvement_threshold: int = 15  # episodes * update_episode
-#     verbose: bool = True
+@dataclass
+class RLBOConfig:
+    max_episodes: int = 100
+    update_episode: int = 10
+    off_policy_episodes: int = 400
+    no_improvement_threshold: int = 15
 
 # -------------------------------
 # PPO Agent Hyperparameters
@@ -58,8 +54,17 @@ class PPOConfig:
 #     betas: tuple = (0.9, 0.999)
 
 # -------------------------------
-# Test function / experiment settings
+# Experiment settings
 # -------------------------------
+@dataclass
+class GPRConfig:
+    rbf_length_scale: float = 1.0
+    rbf_length_scale_bounds: tuple[float, float] = (1e-2, 1e2)
+    wk_noise_level: float = 1
+    wk_noise_level_bounds = (1e-10, 1e1)
+    alpha = 1e-10
+    n_restarts_optimizer = 10
+
 @dataclass
 class ExperimentConfig:
     """Hyperparameters and experiment settings."""
@@ -72,3 +77,4 @@ class ExperimentConfig:
     upper_bound: float = 2.0
     num_workers: int = 10
     horizon: int = 3
+    gpr_config: GPRConfig = GPRConfig()

@@ -27,8 +27,7 @@ class Env_encoder:
         self.y_max = self.y_max_org
 
         # Fit the scaler and model
-        self.scaler_EI.fit(self.y_train)
-        y_train_scaled = self.scaler_EI.transform(self.y_train)
+        y_train_scaled = self.scaler_EI.fit_transform(self.y_train)
         self.model.fit(self.X_train, y_train_scaled)
 
         # Encode the initial state
@@ -56,8 +55,7 @@ class Env_encoder:
         self.y_train = np.vstack((self.y_train, next_observation))
 
         # ADD THIS SECTION: Update GP model with new observation
-        self.scaler_EI.fit(self.y_train)
-        y_train_scaled = self.scaler_EI.transform(self.y_train)
+        y_train_scaled = self.scaler_EI.fit_transform(self.y_train)
         self.model.fit(self.X_train, y_train_scaled)
 
         # Encode the next state

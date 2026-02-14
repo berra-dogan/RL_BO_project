@@ -1,7 +1,7 @@
 from rl_bo import RL_BO
 from utils import Scaler
 from objective_functions import ObjectiveFunctions
-from config import ExperimentConfig
+from config import ExperimentConfig, RLBOConfig
 
 import numpy as np
 import torch
@@ -28,21 +28,22 @@ class BOEngine:
             x_train, y_train = x_start, test_func.real(x_start).reshape(-1, 1)
             
             # 2. Models
-            # CHANGED
-            kernel = RBF(length_scale=1.0, length_scale_bounds=(1e-2, 1e2)) + WhiteKernel(noise_level=1, noise_level_bounds=(1e-10, 1e1))
+            gpr_config = config.gpr_config
+            kernel = RBF(length_scale=gpr_config.rbf_length_scale, length_scale_bounds=gpr_config.rbf_length_scale_bounds) \
+                    + WhiteKernel(noise_level=gpr_config.wk_noise_level, noise_level_bounds=gpr_config.wk_noise_level_bounds)
             gpr = GaussianProcessRegressor(
                 kernel=kernel, 
-                alpha=1e-10,  # Small jitter for stability
-                n_restarts_optimizer=10
+                alpha=gpr_config.alpha,  # Small jitter for stability
+                n_restarts_optimizer=gpr_config.n_restarts_optimizer
             )
-            scaler, acq_func = Scaler(), RL_BO()
+            scaler, acq_func = Scaler(), RL_BO(RLBOConfig())
             
             regrets, decision_times = [], []
             bounds = (np.full(config.dimension, config.lower_bound), 
                       np.full(config.dimension, config.upper_bound))
 
             # 3. Optimization Loop
-            for j in range(config.num_experiments):
+            for _ in range(config.num_experiments):
                 acq_func.horizon = config.horizon
                 
                 # Pre-process
@@ -78,7 +79,6 @@ def main():
     print(f"Starting {config.dimension}D {config.test_func_name} experiments...")
 
     # 2. Prepare Starting Points
-    np.random.seed(1)
     x_starts = [
         np.random.uniform(-15, 15, (config.num_initial_data, config.dimension)) 
         for _ in range(config.num_runs)

@@ -6,23 +6,19 @@ from environment import Env_encoder
 import torch.optim as optim
 from rl_agents import PPO_Agent
 from torch.distributions import MultivariateNormal
+from config import RLBOConfig
 
 class RL_BO():
-    def __init__(self, device = "cpu"):
-        self.gamma = 0.95
-        self.max_episodes = 100
-        self.update_episode = 10
+    def __init__(self, config: RLBOConfig, device = "cpu"):
+
+        self.config = config
         self.scaler_EI = Scaler()
-        self.off_policy_episodes = 100
 
         self.device = device
 
     def evaluate(self, model, y_max_org, X_train_org, y_train_org, action_min, action_max, policy_file_num, horizon):
         # Main method for RL-based Bayesian Optimization
         self.scaler_EI.fit(y_train_org)
-
-        torch.manual_seed(1)
-        np.random.seed(1)
         # Initialize encoder and environment
         input_dim = X_train_org.shape[1] + 1
         encoder = DeepSetEncoder(input_dim=input_dim, hidden_dim=64, output_dim=16).to(self.device)
@@ -36,16 +32,15 @@ class RL_BO():
         return_sum = 0
         final_average_score = 0
         no_improvement_count = 0
-        no_improvement_threshold = 15  # 15 * 50 episodes = 750 episodes
-
+       
         # Main training loop
-        for e in range(1, self.max_episodes + 1):
+        for e in range(1, self.config.max_episodes + 1):
             state = env.reset().to(self.device)
             # print(horizon)
             max_step = horizon
             total_reward = 0
             for k in range(max_step):
-                if e <= self.off_policy_episodes:
+                if e <= self.config.off_policy_episodes:
                     # Get action from TURBO
                     turbo_action = env.turbo_acquisition()
 
@@ -78,14 +73,14 @@ class RL_BO():
             return_sum += total_reward
 
             # Update the agent periodically
-            if e % self.update_episode == 0:
+            if e % self.config.update_episode == 0:
                 if e <= self.off_policy_episodes:
                     agent.update_initial(memory)
                     agent.transfer_learning(policy_file_num)
                 else:
                     agent.update(memory, encoder_optimizer)
                 memory.clear_memory()
-                score = return_sum / self.update_episode
+                score = return_sum / self.config.update_episode
                 eval_scores.append(score)
                 print(f'Episode {e}, Average score: {score}')
                 return_sum = 0
@@ -97,13 +92,13 @@ class RL_BO():
                     no_improvement_count = 0
 
                 # If no improvement for 15 consecutive times, terminate and use turbo acquisition
-                if no_improvement_count >= no_improvement_threshold:
+                if no_improvement_count >= self.config.no_improvement_threshold:
                     print(
-                        f"No improvement for {no_improvement_threshold * self.update_episode} episodes. Terminating learning.")
+                        f"No improvement for {self.config.no_improvement_threshold * self.config.update_episode} episodes. Terminating learning.")
                     x_next = env.turbo_acquisition()
                     return x_next.reshape(1, -1)
 
-                if e == self.max_episodes:
+                if e == self.config.max_episodes:
                     final_average_score = score
 
         # Choose final action based on performance

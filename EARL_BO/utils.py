@@ -5,16 +5,11 @@ class Scaler:
         self.mu = None
         self.std = None
 
-    def fit(self, x):
+    def fit_transform(self, x):
         self.mu = np.mean(x, 0)
         self.std = np.std(x, 0)
 
-    def transform(self, x):
         return (x - self.mu) / self.std
-    
-    def fit_transform(self, x):
-        self.fit(x)
-        return self.transform(x)
 
     def inverse_transform_mean(self, x):
         return x * self.std + self.mu

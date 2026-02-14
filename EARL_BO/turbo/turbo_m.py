@@ -13,9 +13,7 @@ import math
 import sys
 from copy import deepcopy
 
-import gpytorch
 import numpy as np
-import torch
 
 from .gp import train_gp
 from .turbo_1 import Turbo1
