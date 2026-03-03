@@ -22,11 +22,14 @@ class RL_BO():
         # Initialize encoder and environment
         input_dim = X_train_org.shape[1] + 1
         encoder = DeepSetEncoder(input_dim=input_dim, hidden_dim=64, output_dim=16).to(self.device)
-        env = Env_encoder(model, encoder, y_max_org, X_train_org, y_train_org, self.scaler_EI, action_min, action_max)
+        env = Env_encoder(
+            model, encoder, y_max_org, X_train_org, y_train_org,
+            self.scaler_EI, action_min, action_max, device=self.device
+        )
         encoder_optimizer = optim.Adam(encoder.parameters(), lr=0.01, betas=(0.9, 0.999))
 
         memory = Memory()
-        agent = PPO_Agent(env.num_state, env.num_action)
+        agent = PPO_Agent(env.num_state, env.num_action, device=self.device)
 
         eval_scores = []
         return_sum = 0
@@ -74,7 +77,7 @@ class RL_BO():
 
             # Update the agent periodically
             if e % self.config.update_episode == 0:
-                if e <= self.off_policy_episodes:
+                if e <= self.config.off_policy_episodes:
                     agent.update_initial(memory)
                     agent.transfer_learning(policy_file_num)
                 else:
@@ -113,4 +116,3 @@ class RL_BO():
 
         X_next = np.ravel(x_next)
         return X_next.reshape(1, -1)
-

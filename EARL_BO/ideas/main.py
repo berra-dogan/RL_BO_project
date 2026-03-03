@@ -1,4 +1,4 @@
-from EARL_BO.ideas.experiment import ExperimentConfig, ExperimentRunner
+from ideas.experiment import ExperimentConfig, ExperimentRunner
 
 if __name__ == '__main__':
     horizons = [1]

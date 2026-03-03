@@ -78,7 +78,7 @@ class PPO_Agent:
         self.config = config
         self.num_state = num_state
         self.num_action = num_action
-        self.policy = ActorCritic(num_state, num_action, config.action_std).to(self.device)
+        self.policy = ActorCritic(num_state, num_action, config.action_std, device=self.device).to(self.device)
         self.policy_old = deepcopy(self.policy)
         self.optimizer = optim.Adam(self.policy.parameters(), lr=config.learning_rate, betas=config.betas)
         self.MseLoss = nn.MSELoss()
@@ -126,7 +126,7 @@ class PPO_Agent:
             ratios = torch.exp(logprobs - old_logprobs.detach())
             advantages = rewards - state_values.detach()
             surr1 = ratios * advantages
-            surr2 = torch.clamp(ratios, 1 - self.config.eps_clip, 1 + self.eps_clip) * advantages
+            surr2 = torch.clamp(ratios, 1 - self.config.eps_clip, 1 + self.config.eps_clip) * advantages
             loss = -torch.min(surr1, surr2) + self.config.VF_coeff * self.MseLoss(state_values,
                                                                            rewards) - self.config.Entropy_coeff * dist_entropy
 
@@ -178,7 +178,7 @@ class PPO_Agent:
         initial_policy_params = deepcopy(self.policy.state_dict())
 
         # Reinitialize the policy and load from memory
-        self.policy = ActorCritic(self.num_state, self.num_action, self.action_std).to(self.device)
+        self.policy = ActorCritic(self.num_state, self.num_action, self.action_std, device=self.device).to(self.device)
         self.policy.load_state_dict(initial_policy_params)
 
         # Freeze specified layers
@@ -196,5 +196,5 @@ class PPO_Agent:
         )
 
         # Update old policy
-        self.policy_old = ActorCritic(self.num_state, self.num_action, self.action_std).to(self.device)
+        self.policy_old = ActorCritic(self.num_state, self.num_action, self.action_std, device=self.device).to(self.device)
         self.policy_old.load_state_dict(self.policy.state_dict())

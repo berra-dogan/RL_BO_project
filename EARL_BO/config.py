@@ -1,6 +1,5 @@
 # config.py
-from dataclasses import dataclass
-from typing import List
+from dataclasses import dataclass, field
 
 # -------------------------------
 # General settings
@@ -9,7 +8,7 @@ from typing import List
 class RLBOConfig:
     max_episodes: int = 100
     update_episode: int = 10
-    off_policy_episodes: int = 400
+    off_policy_episodes: int = 40
     no_improvement_threshold: int = 15
 
 # -------------------------------
@@ -60,14 +59,15 @@ class PPOConfig:
 class GPRConfig:
     rbf_length_scale: float = 1.0
     rbf_length_scale_bounds: tuple[float, float] = (1e-2, 1e2)
-    wk_noise_level: float = 1
-    wk_noise_level_bounds = (1e-10, 1e1)
-    alpha = 1e-10
-    n_restarts_optimizer = 10
+    wk_noise_level: float = 1.0
+    wk_noise_level_bounds: tuple[float, float] = (1e-10, 1e1)
+    alpha: float = 1e-10
+    n_restarts_optimizer: int = 10
 
 @dataclass
 class ExperimentConfig:
     """Hyperparameters and experiment settings."""
+    device: str
     dimension: int = 30
     test_func_name: str = 'ackley'
     num_runs: int = 1
@@ -77,4 +77,4 @@ class ExperimentConfig:
     upper_bound: float = 2.0
     num_workers: int = 10
     horizon: int = 3
-    gpr_config: GPRConfig = GPRConfig()
+    gpr_config: GPRConfig = field(default_factory=GPRConfig) # A new config is created each time a new Experiment config is created

@@ -5,10 +5,15 @@ class Scaler:
         self.mu = None
         self.std = None
 
-    def fit_transform(self, x):
-        self.mu = np.mean(x, 0)
-        self.std = np.std(x, 0)
+    def fit(self, x):
+        self.mu = np.mean(x, axis=0)
+        self.std = np.std(x, axis=0)
+        # Avoid divide-by-zero and invalid inverse transforms.
+        self.std = np.where(self.std == 0, 1.0, self.std)
+        return self
 
+    def fit_transform(self, x):
+        self.fit(x)
         return (x - self.mu) / self.std
 
     def inverse_transform_mean(self, x):

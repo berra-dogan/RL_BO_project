@@ -6,9 +6,7 @@ from config import ExperimentConfig, RLBOConfig
 import numpy as np
 import torch
 import pandas as pd
-import multiprocessing as mp
 import time
-from functools import partial
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, WhiteKernel
 
@@ -36,7 +34,8 @@ class BOEngine:
                 alpha=gpr_config.alpha,  # Small jitter for stability
                 n_restarts_optimizer=gpr_config.n_restarts_optimizer
             )
-            scaler, acq_func = Scaler(), RL_BO(RLBOConfig())
+            x_scaler, y_scaler = Scaler(), Scaler()
+            acq_func = RL_BO(RLBOConfig(), device=config.device)
             
             regrets, decision_times = [], []
             bounds = (np.full(config.dimension, config.lower_bound), 
@@ -47,8 +46,8 @@ class BOEngine:
                 acq_func.horizon = config.horizon
                 
                 # Pre-process
-                y_scaled = scaler.fit_transform(y_train)
-                x_scaled = scaler.fit_transform(x_train)
+                y_scaled = y_scaler.fit_transform(y_train)
+                x_scaled = x_scaler.fit_transform(x_train)
                 gpr.fit(x_scaled, y_scaled)
 
                 # Step
@@ -60,7 +59,7 @@ class BOEngine:
                 decision_times.append(time.time() - start_t)
 
                 # Post-process and Update
-                x_next = scaler.inverse_transform_mean(x_next_scaled)
+                x_next = x_scaler.inverse_transform_mean(x_next_scaled)
                 y_next = test_func.real(x_next)
                 
                 x_train = np.vstack((x_train, x_next))
@@ -74,8 +73,9 @@ class BOEngine:
             return None
 
 def main():
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     # 1. Initialize Configuration
-    config = ExperimentConfig()
+    config = ExperimentConfig(device=device)
     print(f"Starting {config.dimension}D {config.test_func_name} experiments...")
 
     # 2. Prepare Starting Points
@@ -85,17 +85,15 @@ def main():
     ]
 
     # 3. Parallel Execution
-    # partial fixes the config argument so starmap only needs trial-specific data
-    worker_fn = partial(BOEngine.run_trial, config=config)
-    tasks = [(i, x_starts[i], i + 1) for i in range(config.num_runs)]
-
-    with mp.Pool(processes=config.num_workers) as pool:
-        results = pool.starmap(worker_fn, tasks)
-
-    # 4. Filter and Aggregate Data
-    results = [r for r in results if r is not None]
+    results = []
+    for i in range(config.num_runs):
+        result = BOEngine.run_trial(i, x_starts[i], i + 1, config)
+        if result is not None:
+            results.append(result)
+    
     if not results:
-        return
+        print("all trials failed.")
+        return 
 
     regrets = np.array([r[0] for r in results])
     df = pd.DataFrame({

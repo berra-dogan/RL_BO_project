@@ -3,6 +3,7 @@ from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import WhiteKernel, RBF
 from utils import Scaler
 from rl_bo import RL_BO
+from config import RLBOConfig
 import time
 
 
@@ -22,7 +23,8 @@ class BayesianOptimizer:
         
         # Model setup
         gpr = GaussianProcessRegressor(kernel=RBF(1.0) + WhiteKernel(noise_level=1e-05), n_restarts_optimizer=10)
-        scaler, acq_func = Scaler(), RL_BO()
+        x_scaler, y_scaler = Scaler(), Scaler()
+        acq_func = RL_BO(RLBOConfig())
         
         results = {'regrets': [], 'times': []}
         bounds = (np.full(self.cfg.dimension, self.cfg.lower_bound), 
@@ -30,8 +32,8 @@ class BayesianOptimizer:
 
         for _ in range(self.cfg.num_experiments):
             # Fit and Transform
-            y_scaled = scaler.fit_transform(y_train)
-            x_scaled = scaler.fit_transform(x_train)
+            y_scaled = y_scaler.fit_transform(y_train)
+            x_scaled = x_scaler.fit_transform(x_train)
             gpr.fit(x_scaled, y_scaled)
 
             # Decision making with timing
@@ -41,7 +43,7 @@ class BayesianOptimizer:
             results['times'].append(time.time() - start)
 
             # Update dataset
-            x_next = scaler.inverse_transform_mean(x_next_scaled)
+            x_next = x_scaler.inverse_transform_mean(x_next_scaled)
             y_next = self.obj_lib.evaluate(self.cfg.test_func_name, x_next)
             
             x_train = np.vstack([x_train, x_next])

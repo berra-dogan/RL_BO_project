@@ -3,7 +3,7 @@ import numpy as np
 from turbo.turbo_1 import ModifiedTurbo1
 
 class Env_encoder:
-    def __init__(self, model, encoder, y_max_org, X_train_org, y_train_org, scaler_EI, action_min, action_max, device = "cpu"):
+    def __init__(self, model, encoder, y_max_org, X_train_org, y_train_org, scaler_EI, action_min, action_max, device):
         # Initialize the environment
         self.num_state = 16
         self.num_action = X_train_org.shape[1]
