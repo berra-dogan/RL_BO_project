@@ -16,20 +16,43 @@ class RL_BO():
 
         self.device = device
 
-    def evaluate(self, model, y_max_org, X_train_org, y_train_org, action_min, action_max, policy_file_num, horizon):
-        # Main method for RL-based Bayesian Optimization
-        self.scaler_EI.fit(y_train_org)
-        # Initialize encoder and environment
-        input_dim = X_train_org.shape[1] + 1
+    def _verify_runtime_device(self, encoder, agent):
+        expected_type = torch.device(self.device).type
+        encoder_type = next(encoder.parameters()).device.type
+        policy_type = next(agent.policy.parameters()).device.type
+        policy_old_type = next(agent.policy_old.parameters()).device.type
+
+        assert encoder_type == expected_type, f"encoder on {encoder_type}, expected {expected_type}"
+        assert policy_type == expected_type, f"policy on {policy_type}, expected {expected_type}"
+        assert policy_old_type == expected_type, f"policy_old on {policy_old_type}, expected {expected_type}"
+
+    def evaluate(
+        self,
+        model,
+        y_max_raw,
+        X_train_scaled,
+        y_train_raw,
+        action_min_scaled,
+        action_max_scaled,
+        policy_file_num,
+        horizon,
+    ):
+        # Features stay in scaled space; targets stay in original space and are scaled only for GP fitting.
+        if torch.device(self.device).type == "cuda" and not torch.cuda.is_available():
+            raise RuntimeError("CUDA requested but torch.cuda.is_available() is False")
+
+        self.scaler_EI.fit(y_train_raw)
+        input_dim = X_train_scaled.shape[1] + 1
         encoder = DeepSetEncoder(input_dim=input_dim, hidden_dim=64, output_dim=16).to(self.device)
         env = Env_encoder(
-            model, encoder, y_max_org, X_train_org, y_train_org,
-            self.scaler_EI, action_min, action_max, device=self.device
+            model, encoder, y_max_raw, X_train_scaled, y_train_raw,
+            self.scaler_EI, action_min_scaled, action_max_scaled, device=self.device
         )
         encoder_optimizer = optim.Adam(encoder.parameters(), lr=0.01, betas=(0.9, 0.999))
 
         memory = Memory()
         agent = PPO_Agent(env.num_state, env.num_action, device=self.device)
+        self._verify_runtime_device(encoder, agent)
 
         eval_scores = []
         return_sum = 0

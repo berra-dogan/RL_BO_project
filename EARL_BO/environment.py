@@ -3,28 +3,41 @@ import numpy as np
 from turbo.turbo_1 import ModifiedTurbo1
 
 class Env_encoder:
-    def __init__(self, model, encoder, y_max_org, X_train_org, y_train_org, scaler_EI, action_min, action_max, device):
-        # Initialize the environment
+    def __init__(
+        self,
+        model,
+        encoder,
+        y_max_raw,
+        X_train_scaled,
+        y_train_raw,
+        scaler_EI,
+        action_min_scaled,
+        action_max_scaled,
+        device,
+    ):
+        # Initialize the environment in scaled feature space.
+        self.device = device
+        
         self.num_state = 16
-        self.num_action = X_train_org.shape[1]
-        self.action_min = action_min
-        self.action_max = action_max
-        self.lb = np.min(X_train_org, axis=0)
-        self.ub = np.max(X_train_org, axis=0)
+        self.num_action = X_train_scaled.shape[1]
+        self.action_min = action_min_scaled
+        self.action_max = action_max_scaled
+        self.lb = np.min(X_train_scaled, axis=0)
+        self.ub = np.max(X_train_scaled, axis=0)
         self.encoder = encoder
         self.model = model
-        self.X_train_org = X_train_org
-        self.y_train_org = y_train_org
+        self.X_train_scaled = X_train_scaled
+        self.y_train_raw = y_train_raw
         self.scaler_EI = scaler_EI
-        self.y_max_org = y_max_org
-        self.turbo = ModifiedTurbo1(X_train_org, y_train_org, self.lb, self.ub)
-        self.device = device
+        self.y_max_raw = y_max_raw
+        self.turbo = ModifiedTurbo1(X_train_scaled, scaler_EI.fit_transform(y_train_raw), self.lb, self.ub, device=self.device, verbose=True)
+
 
     def reset(self):
         # Reset the environment to its initial state
-        self.X_train = self.X_train_org
-        self.y_train = self.y_train_org
-        self.y_max = self.y_max_org
+        self.X_train = self.X_train_scaled
+        self.y_train = self.y_train_raw
+        self.y_max = self.y_max_raw
 
         # Fit the scaler and model
         y_train_scaled = self.scaler_EI.fit_transform(self.y_train)

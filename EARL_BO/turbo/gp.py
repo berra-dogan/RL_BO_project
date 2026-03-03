@@ -38,7 +38,7 @@ class GP(ExactGP):
         return MultivariateNormal(mean_x, covar_x)
 
 
-def train_gp(train_x, train_y, use_ard, num_steps, hypers={}):
+def train_gp(train_x, train_y, use_ard, num_steps, hypers=None):
     """Fit a GP model where train_x is in [0, 1]^d and train_y is standardized."""
     assert train_x.ndim == 2
     assert train_y.ndim == 1
@@ -72,10 +72,12 @@ def train_gp(train_x, train_y, use_ard, num_steps, hypers={}):
     mll = ExactMarginalLogLikelihood(likelihood, model)
 
     # Initialize model hypers
+    if hypers is None:
+        hypers = {}
+
     if hypers:
         model.load_state_dict(hypers)
     else:
-        hypers = {}
         hypers["covar_module.outputscale"] = 1.0
         hypers["covar_module.base_kernel.lengthscale"] = 0.5
         hypers["likelihood.noise"] = 0.005

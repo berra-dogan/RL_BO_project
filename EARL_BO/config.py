@@ -1,6 +1,8 @@
 # config.py
 from dataclasses import dataclass, field
 
+import torch
+
 # -------------------------------
 # General settings
 # -------------------------------
@@ -58,16 +60,16 @@ class PPOConfig:
 @dataclass
 class GPRConfig:
     rbf_length_scale: float = 1.0
-    rbf_length_scale_bounds: tuple[float, float] = (1e-2, 1e2)
+    rbf_length_scale_bounds: tuple[float, float] = (1e-6, 1e2)
     wk_noise_level: float = 1.0
-    wk_noise_level_bounds: tuple[float, float] = (1e-10, 1e1)
+    wk_noise_level_bounds: tuple[float, float] = (1e-12, 1e1)
     alpha: float = 1e-10
     n_restarts_optimizer: int = 10
 
 @dataclass
 class ExperimentConfig:
     """Hyperparameters and experiment settings."""
-    device: str
+    device: str = field(default_factory=lambda: "cuda" if torch.cuda.is_available() else "cpu")
     dimension: int = 30
     test_func_name: str = 'ackley'
     num_runs: int = 1

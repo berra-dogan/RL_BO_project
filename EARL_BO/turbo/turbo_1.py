@@ -37,7 +37,6 @@ class Turbo1:
     use_ard : If you want to use ARD for the GP kernel.
     max_cholesky_size : Largest number of training points where we use Cholesky, int
     n_training_steps : Number of training steps for learning the GP hypers, int
-    min_cuda : We use float64 on the CPU if we have this or fewer datapoints
     device : Device to use for GP fitting ("cpu" or "cuda")
     dtype : Dtype to use for GP fitting ("float32" or "float64")
 
@@ -59,7 +58,6 @@ class Turbo1:
         use_ard=True,
         max_cholesky_size=2000,
         n_training_steps=50,
-        min_cuda=1024,
         device="cpu",
         dtype="float64",
     ):
@@ -117,9 +115,9 @@ class Turbo1:
         self.fX = np.zeros((0, 1))
 
         # Device and dtype for GPyTorch
-        self.min_cuda = min_cuda
         self.dtype = torch.float32 if dtype == "float32" else torch.float64
         self.device = torch.device("cuda") if device == "cuda" else torch.device("cpu")
+        print("IN TURBO1: Using dtype = %s \nUsing device = %s" % (self.dtype, self.device))
         if self.verbose:
             print("Using dtype = %s \nUsing device = %s" % (self.dtype, self.device))
             sys.stdout.flush()
@@ -160,16 +158,10 @@ class Turbo1:
         sigma = 1.0 if sigma < 1e-6 else sigma
         fX = (deepcopy(fX) - mu) / sigma
 
-        # Figure out what device we are running on
-        if len(X) < self.min_cuda:
-            device, dtype = torch.device("cpu"), torch.float64
-        else:
-            device, dtype = self.device, self.dtype
-
         # We use CG + Lanczos for training if we have enough data
         with gpytorch.settings.max_cholesky_size(self.max_cholesky_size):
-            X_torch = torch.tensor(X).to(device=device, dtype=dtype)
-            y_torch = torch.tensor(fX).to(device=device, dtype=dtype)
+            X_torch = torch.tensor(X).to(device=self.device, dtype=self.dtype)
+            y_torch = torch.tensor(fX).to(device=self.device, dtype=self.dtype)
             gp = train_gp(
                 train_x=X_torch, train_y=y_torch, use_ard=self.use_ard, num_steps=n_training_steps, hypers=hypers
             )
@@ -188,31 +180,26 @@ class Turbo1:
         # Draw a Sobolev sequence in [lb, ub]
         seed = np.random.randint(int(1e6))
         sobol = SobolEngine(self.dim, scramble=True, seed=seed)
-        pert = sobol.draw(self.n_cand).to(dtype=dtype, device=device).cpu().detach().numpy()
+        pert = sobol.draw(self.n_cand).to(dtype=self.dtype, device=self.device).cpu().detach().numpy()
         pert = lb + (ub - lb) * pert
 
         # Create a perturbation mask
         prob_perturb = min(20.0 / self.dim, 1.0)
         mask = np.random.rand(self.n_cand, self.dim) <= prob_perturb
         ind = np.where(np.sum(mask, axis=1) == 0)[0]
-        mask[ind, np.random.randint(0, self.dim - 1, size=len(ind))] = 1
+        mask[ind, np.random.randint(0, self.dim, size=len(ind))] = 1
 
         # Create candidate points
         X_cand = x_center.copy() * np.ones((self.n_cand, self.dim))
         X_cand[mask] = pert[mask]
 
-        # Figure out what device we are running on
-        if len(X_cand) < self.min_cuda:
-            device, dtype = torch.device("cpu"), torch.float64
-        else:
-            device, dtype = self.device, self.dtype
 
         # We may have to move the GP to a new device
-        gp = gp.to(dtype=dtype, device=device)
+        gp = gp.to(dtype=self.dtype, device=self.device)
 
         # We use Lanczos for sampling if we have enough data
         with torch.no_grad(), gpytorch.settings.max_cholesky_size(self.max_cholesky_size):
-            X_cand_torch = torch.tensor(X_cand).to(device=device, dtype=dtype)
+            X_cand_torch = torch.tensor(X_cand).to(device=self.device, dtype=self.dtype)
             y_cand = gp.likelihood(gp(X_cand_torch)).sample(torch.Size([self.batch_size])).t().cpu().detach().numpy()
 
         # Remove the torch variables
@@ -303,7 +290,17 @@ class Turbo1:
 
 # Define a modified version of TuRBO for discrete optimization
 class ModifiedTurbo1(Turbo1):
-    def __init__(self, X, Y, lb, ub):
+    def __init__(
+        self,
+        X,
+        Y,
+        lb,
+        ub,
+        device="cpu",
+        dtype="float64",
+        n_training_steps=50,
+        verbose=False,
+    ):
         dummy_f = lambda x: 0
         n_init = len(X)
         # Ensure max_evals is always greater than n_init
@@ -314,16 +311,20 @@ class ModifiedTurbo1(Turbo1):
                          ub=ub,
                          n_init=n_init,
                          max_cholesky_size=2000,
-                         max_evals=max_evals,  # Updated to be dynamic
-                         n_training_steps=50,
+                          max_evals=max_evals,  # Updated to be dynamic
+                         n_training_steps=n_training_steps,
                          batch_size=1,
-                         device="cpu",
-                         dtype="float64")
+                         verbose=verbose,
+                         device=device,
+                         dtype=dtype)
         self.X = X
         self.fX = -Y  # Note the negative sign as TuRBO minimizes
         self._X = deepcopy(X)
         self._fX = -deepcopy(Y)
         self.n_evals = len(X)
+        self.dtype = torch.float32 if dtype == "float32" else torch.float64
+        self.device = torch.device("cuda") if device == "cuda" else torch.device("cpu")
+        print("IN MOD_TURBO: Using dtype = %s \nUsing device = %s" % (self.dtype, self.device))
 
     def optimize(self):
         # Perform one step of TuRBO optimization
