@@ -6,6 +6,8 @@ import torch.optim as optim
 from copy import deepcopy
 from config import PPOConfig
 
+WARMUP = 100
+
 # Define the ActorCritic neural network for the PPO agent
 class ActorCritic(nn.Module):
     def __init__(self, num_state, num_action, action_std, device = "cpu"):
@@ -158,7 +160,7 @@ class PPO_Agent:
         old_states = torch.squeeze(torch.stack(memory.states).to(self.device)).detach()
         old_actions = torch.squeeze(torch.stack(memory.actions).to(self.device)).detach()
         # Optimize policy
-        for _ in range(1000):
+        for _ in range(WARMUP):
             _, state_values, _ = self.policy.evaluate(old_states, old_actions)
             actions = self.policy.act_mean(old_states)
 

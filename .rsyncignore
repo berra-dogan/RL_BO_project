@@ -1,0 +1,15 @@
+.git
+.gitignore
+.rsyncignore
+.vscode
+.DS_Store
+venv
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.so
+*.csv
+EARL_BO/__pycache__
+EARL_BO/results

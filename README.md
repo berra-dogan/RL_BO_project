@@ -28,3 +28,5 @@ This writes a CSV file named like:
 - Main experiment config is in `EARL_BO/config.py`.
 - Objective functions are in `EARL_BO/objective_functions.py`.
 - TuRBO code is under `EARL_BO/turbo/`.
+- Cluster usage helpers are in `scripts/`.
+- See `CLUSTER_WORKFLOW.md` for the Imperial cluster workflow.

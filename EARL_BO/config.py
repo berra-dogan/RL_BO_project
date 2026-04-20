@@ -12,6 +12,10 @@ class RLBOConfig:
     update_episode: int = 10
     off_policy_episodes: int = 40
     no_improvement_threshold: int = 15
+    encoder_learning_rate: float = 0.01
+    encoder_betas: tuple[float, float] = (0.9, 0.999)
+    reward_mode: str = "earlbo"
+    snake_path_cost_weight: float = 0.0
 
 # -------------------------------
 # PPO Agent Hyperparameters

@@ -6,12 +6,13 @@ from environment import Env_encoder
 import torch.optim as optim
 from rl_agents import PPO_Agent
 from torch.distributions import MultivariateNormal
-from config import RLBOConfig
+from config import PPOConfig, RLBOConfig
 
 class RL_BO():
-    def __init__(self, config: RLBOConfig, device = "cpu"):
+    def __init__(self, config: RLBOConfig, ppo_config: PPOConfig | None = None, device = "cpu"):
 
         self.config = config
+        self.ppo_config = ppo_config or PPOConfig()
         self.scaler_EI = Scaler()
 
         self.device = device
@@ -45,13 +46,26 @@ class RL_BO():
         input_dim = X_train_scaled.shape[1] + 1
         encoder = DeepSetEncoder(input_dim=input_dim, hidden_dim=64, output_dim=16).to(self.device)
         env = Env_encoder(
-            model, encoder, y_max_raw, X_train_scaled, y_train_raw,
-            self.scaler_EI, action_min_scaled, action_max_scaled, device=self.device
+            model,
+            encoder,
+            y_max_raw,
+            X_train_scaled,
+            y_train_raw,
+            self.scaler_EI,
+            action_min_scaled,
+            action_max_scaled,
+            reward_mode=self.config.reward_mode,
+            snake_path_cost_weight=self.config.snake_path_cost_weight,
+            device=self.device,
         )
-        encoder_optimizer = optim.Adam(encoder.parameters(), lr=0.01, betas=(0.9, 0.999))
+        encoder_optimizer = optim.Adam(
+            encoder.parameters(),
+            lr=self.config.encoder_learning_rate,
+            betas=self.config.encoder_betas,
+        )
 
         memory = Memory()
-        agent = PPO_Agent(env.num_state, env.num_action, device=self.device)
+        agent = PPO_Agent(env.num_state, env.num_action, config=self.ppo_config, device=self.device)
         self._verify_runtime_device(encoder, agent)
 
         eval_scores = []
