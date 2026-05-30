@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 from turbo.turbo_1 import ModifiedTurbo1
+from rewards import RewardContext, get_reward_function
 
 class Env_encoder:
     def __init__(
@@ -15,6 +16,7 @@ class Env_encoder:
         action_max_scaled,
         reward_mode,
         snake_path_cost_weight,
+        reward_params,
         device,
     ):
         # Initialize the environment in scaled feature space.
@@ -33,7 +35,9 @@ class Env_encoder:
         self.scaler_EI = scaler_EI
         self.y_max_raw = y_max_raw
         self.reward_mode = reward_mode
-        self.snake_path_cost_weight = snake_path_cost_weight
+        self.reward_params = dict(reward_params or {})
+        self.reward_params.setdefault("path_cost_weight", snake_path_cost_weight)
+        self.reward_function = get_reward_function(reward_mode)
         self.turbo = ModifiedTurbo1(X_train_scaled, scaler_EI.fit_transform(y_train_raw), self.lb, self.ub, device=self.device, verbose=True)
 
 
@@ -67,13 +71,22 @@ class Env_encoder:
         # Simulate next observation
         next_observation = np.array([np.random.normal(mean[0], std[0])]).reshape(-1, )
         improvement = max(0, (next_observation - self.y_max)[0])
-        if self.reward_mode == "snake":
-            next_action = action.reshape(-1)
-            scale = np.maximum(self.ub - self.lb, 1e-8)
-            move_cost = np.linalg.norm((next_action - prev_action) / scale, ord=2)
-            reward = improvement - self.snake_path_cost_weight * move_cost
-        else:
-            reward = improvement
+        next_action = action.reshape(-1)
+        scale = np.maximum(self.ub - self.lb, 1e-8)
+        move_cost = np.linalg.norm((next_action - prev_action) / scale, ord=2)
+        reward_context = RewardContext(
+            improvement=float(improvement),
+            move_cost=float(move_cost),
+            mean=float(mean[0]),
+            std=float(std[0]),
+            next_observation=float(next_observation[0]),
+            y_max=float(self.y_max),
+            action=next_action,
+            prev_action=prev_action,
+            lower_bound=self.lb,
+            upper_bound=self.ub,
+        )
+        reward = float(self.reward_function(reward_context, self.reward_params))
 
         # Update training data
         self.X_train = np.vstack((self.X_train, action))

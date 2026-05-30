@@ -2,6 +2,7 @@ from rl_bo import RL_BO
 from utils import Scaler
 from objective_functions import ObjectiveFunctions
 from config import ExperimentConfig, GPRConfig, PPOConfig, RLBOConfig
+from rewards import available_reward_modes
 
 import argparse
 from pathlib import Path
@@ -10,6 +11,7 @@ import numpy as np
 import torch
 import time
 import csv
+import json
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, WhiteKernel, Matern
 
@@ -115,8 +117,20 @@ def parse_args():
     parser.add_argument("--off-policy-episodes", type=int, default=None)
     parser.add_argument("--no-improvement-threshold", type=int, default=None)
     parser.add_argument("--encoder-learning-rate", type=float, default=None)
-    parser.add_argument("--reward-mode", choices=("earlbo", "snake"), default=None)
+    parser.add_argument("--reward-mode", choices=available_reward_modes(), default=None)
     parser.add_argument("--snake-path-cost-weight", type=float, default=None)
+    parser.add_argument(
+        "--reward-param",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="Reward-specific numeric parameter. Can be repeated.",
+    )
+    parser.add_argument(
+        "--reward-params-json",
+        default=None,
+        help="JSON object of reward-specific numeric parameters.",
+    )
     parser.add_argument("--ppo-learning-rate", type=float, default=None)
     parser.add_argument("--ppo-action-std", type=float, default=None)
     parser.add_argument("--ppo-action-std-min", type=float, default=None)
@@ -180,6 +194,7 @@ def build_configs(args):
         rlbo_config.reward_mode = args.reward_mode
     if args.snake_path_cost_weight is not None:
         rlbo_config.snake_path_cost_weight = args.snake_path_cost_weight
+    rlbo_config.reward_params = parse_reward_params(args)
 
     ppo_config = PPOConfig()
     if args.ppo_learning_rate is not None:
@@ -206,6 +221,23 @@ def build_configs(args):
         ppo_config.freeze_num = args.ppo_freeze_num
 
     return config, rlbo_config, ppo_config
+
+
+def parse_reward_params(args):
+    params = {}
+    if args.reward_params_json is not None:
+        decoded = json.loads(args.reward_params_json)
+        if not isinstance(decoded, dict):
+            raise ValueError("--reward-params-json must decode to an object")
+        params.update({key: float(value) for key, value in decoded.items()})
+
+    for item in args.reward_param:
+        if "=" not in item:
+            raise ValueError(f"Invalid --reward-param '{item}'. Expected KEY=VALUE.")
+        key, value = item.split("=", 1)
+        params[key] = float(value)
+
+    return params
 
 
 def make_run_start(run_id, config: ExperimentConfig):

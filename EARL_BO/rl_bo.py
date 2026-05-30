@@ -56,6 +56,7 @@ class RL_BO():
             action_max_scaled,
             reward_mode=self.config.reward_mode,
             snake_path_cost_weight=self.config.snake_path_cost_weight,
+            reward_params=self.config.reward_params,
             device=self.device,
         )
         encoder_optimizer = optim.Adam(

@@ -13,3 +13,4 @@ __pycache__
 *.csv
 EARL_BO/__pycache__
 EARL_BO/results
+EARL_BO/batch_runs_earl_bo

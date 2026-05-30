@@ -6,7 +6,7 @@ import torch.optim as optim
 from copy import deepcopy
 from config import PPOConfig
 
-WARMUP = 100
+WARMUP = 200
 
 # Define the ActorCritic neural network for the PPO agent
 class ActorCritic(nn.Module):

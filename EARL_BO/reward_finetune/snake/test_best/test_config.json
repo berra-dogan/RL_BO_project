@@ -1,0 +1,45 @@
+{
+  "base_settings": {
+    "dimension": 10,
+    "gpr_rbf_length_scale": 1.0,
+    "gpr_restarts": 2,
+    "gpr_wk_noise_level": 1.0,
+    "horizon": 3,
+    "lower_bound": -1.0,
+    "no_improvement_threshold": 8,
+    "num_initial_data": 30,
+    "ppo_action_std_min": 0.01,
+    "ppo_eps_clip": 0.2,
+    "ppo_freeze_num": 2,
+    "ppo_gamma_increase": 1.0,
+    "ppo_k_epochs": 30,
+    "ppo_vf_coeff": 0.5,
+    "reward_mode": "snake",
+    "snake_path_cost_weight": 0.01,
+    "test_func": "ackley",
+    "update_episode": 10,
+    "upper_bound": 1.0
+  },
+  "params": {
+    "encoder_learning_rate": 0.001,
+    "gpr_alpha": 1e-08,
+    "max_episodes": 120,
+    "off_policy_episodes": 20,
+    "ppo_action_decay": 0.99,
+    "ppo_action_std": 0.1,
+    "ppo_entropy_coeff": 0.01,
+    "ppo_gamma": 0.95,
+    "ppo_learning_rate": 0.0001
+  },
+  "saved_run_dir": "/Users/berra.dogan/Desktop/Imperial-Coursework/thesis/my_implementation/EARL_BO/reward_finetune/snake/test_best/saved_test_result",
+  "saved_summary_csv": "/Users/berra.dogan/Desktop/Imperial-Coursework/thesis/my_implementation/EARL_BO/reward_finetune/snake/test_best/saved_test_result/RL_BO_10D_ackley_h3.csv",
+  "selected_from_config_id": 1,
+  "test_result": {
+    "best_regret": 2.863182116957349,
+    "final_regret": 2.863182116957349,
+    "run_dir": "/Users/berra.dogan/Desktop/Imperial-Coursework/thesis/my_implementation/EARL_BO/reward_finetune/snake/test_best",
+    "score": 2.863182116957349,
+    "status": "ok",
+    "summary_csv": "/Users/berra.dogan/Desktop/Imperial-Coursework/thesis/my_implementation/EARL_BO/reward_finetune/snake/test_best/RL_BO_10D_ackley_h3.csv"
+  }
+}

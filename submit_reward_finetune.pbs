@@ -1,0 +1,41 @@
+#!/bin/bash
+#PBS -N reward_finetune
+#PBS -J 0-4
+#PBS -l select=1:ncpus=2:mem=8gb
+#PBS -l walltime=02:00:00
+
+cd "$PBS_O_WORKDIR"
+
+module purge
+module load tools/prod
+module load Python/3.11.3-GCCcore-12.3.0
+source .venv/bin/activate
+
+export OMP_NUM_THREADS=2
+export MKL_NUM_THREADS=2
+export OPENBLAS_NUM_THREADS=2
+
+REWARDS=(earlbo snake log_improvement normalized_improvement optimistic_improvement)
+REWARD="${REWARDS[$PBS_ARRAY_INDEX]}"
+
+EXTRA_ARGS=""
+
+if [ "$REWARD" = "snake" ]; then
+  EXTRA_ARGS="--snake-path-cost-weight 0.01"
+fi
+
+if [ "$REWARD" = "optimistic_improvement" ]; then
+  EXTRA_ARGS="--reward-param std_weight=0.2"
+fi
+
+echo "Array index: $PBS_ARRAY_INDEX"
+echo "Reward mode: $REWARD"
+echo "Extra args: $EXTRA_ARGS"
+
+python EARL_BO/run_experiments.py \
+  --mode tune \
+  --device cpu \
+  --output-root "reward_finetune/${REWARD}" \
+  --reward-mode "$REWARD" \
+  $EXTRA_ARGS \
+  --skip-existing

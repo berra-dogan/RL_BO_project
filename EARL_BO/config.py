@@ -16,6 +16,7 @@ class RLBOConfig:
     encoder_betas: tuple[float, float] = (0.9, 0.999)
     reward_mode: str = "earlbo"
     snake_path_cost_weight: float = 0.0
+    reward_params: dict[str, float] = field(default_factory=dict)
 
 # -------------------------------
 # PPO Agent Hyperparameters
