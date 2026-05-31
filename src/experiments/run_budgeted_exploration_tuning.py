@@ -29,7 +29,7 @@ BUDGETED_BASE_CONFIG = {key: values[0] for key, values in SEARCH_SPACE.items()}
 BUDGETED_PARAM_SPACE = {
     "movement_budget": [5],
     "reward_param_explore_weight": [5.0],
-    "reward_param_path_cost_weight": [0.1], #0.2
+    "reward_param_path_cost_weight": [0.05], #0.2
     "reward_param_over_budget_penalty": [0.0], #0
 }
 

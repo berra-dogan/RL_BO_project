@@ -55,18 +55,27 @@ def optimistic_improvement_reward(ctx: RewardContext, params: dict[str, float]) 
 
 
 def budgeted_exploration_reward(ctx: RewardContext, params: dict[str, float]) -> float:
-    explore_weight = params.get("explore_weight", 0.2)
+    explore_weight = params.get("explore_weight", 1.0)
     path_cost_weight = params.get("path_cost_weight", 0.05)
-    over_budget_penalty = params.get("over_budget_penalty", 10.0)
-    remaining_fraction = ctx.remaining_budget_fraction
+    over_budget_penalty = params.get("over_budget_penalty", 5.0)
 
-    exploration_bonus = remaining_fraction * explore_weight * max(ctx.std, 0.0)
-    path_penalty = (1.0 - remaining_fraction) * path_cost_weight * ctx.move_cost
+    remaining = max(ctx.remaining_budget_fraction, 0.0)
+
+    exploration_bonus = remaining * explore_weight * max(ctx.std, 0.0)
+
+    # Penalty grows sharply as budget gets low
+    budget_pressure = 1.0 / max(remaining, 0.05)
+
+    path_penalty = budget_pressure * path_cost_weight * ctx.move_cost
+
     budget_violation_penalty = over_budget_penalty * ctx.over_budget
 
-    return ctx.improvement + exploration_bonus - path_penalty - budget_violation_penalty
-
-
+    return (
+        ctx.improvement
+        + exploration_bonus
+        - path_penalty
+        - budget_violation_penalty
+    )
 REWARD_FUNCTIONS: dict[str, RewardFunction] = {
     "budgeted_exploration": budgeted_exploration_reward,
     "earlbo": earlbo_reward,
