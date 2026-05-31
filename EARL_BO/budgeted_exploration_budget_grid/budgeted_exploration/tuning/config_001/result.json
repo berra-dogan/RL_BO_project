@@ -1,0 +1,8 @@
+{
+  "best_regret": 2.3317769713955845,
+  "final_regret": 2.3317769713955845,
+  "run_dir": "/rds/general/user/bd225/home/my_implementation/EARL_BO/budgeted_exploration_budget_grid/budgeted_exploration/tuning/config_001",
+  "score": 2.8567543070629893,
+  "status": "ok",
+  "summary_csv": "/rds/general/user/bd225/home/my_implementation/EARL_BO/budgeted_exploration_budget_grid/budgeted_exploration/tuning/config_001/RL_BO_10D_ackley_h3.csv"
+}

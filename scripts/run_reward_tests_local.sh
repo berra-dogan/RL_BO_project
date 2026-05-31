@@ -34,10 +34,11 @@ run_reward_test() {
 }
 
 run_reward_test earlbo
-run_reward_test snake --snake-path-cost-weight 0.01
+run_reward_test budgeted_exploration
+run_reward_test snake
 run_reward_test log_improvement
 run_reward_test normalized_improvement
-run_reward_test optimistic_improvement --reward-param std_weight=0.2
+run_reward_test optimistic_improvement
 
 echo "[done] Test outputs:"
 find "EARL_BO/${OUTPUT_ROOT}" -path '*/test_best/test_config.json' -print

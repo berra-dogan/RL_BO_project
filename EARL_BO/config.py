@@ -17,6 +17,7 @@ class RLBOConfig:
     reward_mode: str = "earlbo"
     snake_path_cost_weight: float = 0.0
     reward_params: dict[str, float] = field(default_factory=dict)
+    movement_budget: float | None = None
 
 # -------------------------------
 # PPO Agent Hyperparameters

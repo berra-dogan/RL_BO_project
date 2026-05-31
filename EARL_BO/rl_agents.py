@@ -71,7 +71,7 @@ class ActorCritic(nn.Module):
         action_logprobs = dist.log_prob(action)
         dist_entropy = dist.entropy()
         state_value = self.critic(state)
-        return action_logprobs, torch.squeeze(state_value), dist_entropy
+        return action_logprobs, state_value.view(-1), dist_entropy
 
 # Define the PPO agent class
 class PPO_Agent:
@@ -117,7 +117,7 @@ class PPO_Agent:
             rewards.insert(0, discounted_reward)
 
         rewards = torch.FloatTensor(rewards).to(self.device)
-        rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-5)
+        rewards = (rewards - rewards.mean()) / (rewards.std(unbiased=False) + 1e-5)
         # Convert stored experience to tensor
         old_states = torch.stack(memory.states).to(self.device).detach()
         old_actions = torch.stack([action.reshape(-1) for action in memory.actions]).to(self.device).detach()
@@ -155,10 +155,11 @@ class PPO_Agent:
             rewards.insert(0, discounted_reward)
 
         rewards = torch.FloatTensor(rewards).to(self.device)
-        rewards = (rewards - rewards.mean()) / (rewards.std() + 1e-5)
+        rewards = (rewards - rewards.mean()) / (rewards.std(unbiased=False) + 1e-5)
 
-        old_states = torch.squeeze(torch.stack(memory.states).to(self.device)).detach()
-        old_actions = torch.squeeze(torch.stack(memory.actions).to(self.device)).detach()
+        old_states = torch.stack(memory.states).to(self.device).detach()
+        old_actions = torch.stack(memory.actions).to(self.device).detach()
+        old_actions = old_actions.reshape(old_actions.shape[0], -1)
         # Optimize policy
         for _ in range(WARMUP):
             _, state_values, _ = self.policy.evaluate(old_states, old_actions)

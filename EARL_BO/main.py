@@ -49,8 +49,10 @@ class BOEngine:
             acq_func = RL_BO(rlbo_config, ppo_config=ppo_config, device=config.device)
             
             regrets, decision_times = [], []
+            scaled_move_costs, raw_move_costs = [], []
             lower_bound = np.full((1, config.dimension), config.lower_bound)
             upper_bound = np.full((1, config.dimension), config.upper_bound)
+            movement_budget_remaining = rlbo_config.movement_budget
 
             # 3. Optimization Loop
             for _ in range(config.num_experiments):
@@ -58,6 +60,8 @@ class BOEngine:
                 x_scaled = x_scaler.fit_transform(x_train)
                 scaled_lower_bound = ((lower_bound - x_scaler.mu) / x_scaler.std).reshape(-1)
                 scaled_upper_bound = ((upper_bound - x_scaler.mu) / x_scaler.std).reshape(-1)
+                prev_x_scaled = x_scaled[-1].reshape(-1)
+                prev_x_raw = x_train[-1].reshape(-1)
 
                 # Step
                 start_t = time.time()
@@ -70,20 +74,32 @@ class BOEngine:
                     scaled_upper_bound,
                     policy_num,
                     config.horizon,
+                    movement_budget_remaining=movement_budget_remaining,
+                    movement_budget_total=rlbo_config.movement_budget,
                 )
                 decision_times.append(time.time() - start_t)
+                action_scale = np.maximum(scaled_upper_bound - scaled_lower_bound, 1e-8)
+                move_cost = np.linalg.norm((x_next_scaled.reshape(-1) - prev_x_scaled) / action_scale, ord=2)
+                if movement_budget_remaining is not None:
+                    movement_budget_remaining = max(0.0, movement_budget_remaining - float(move_cost))
 
                 # Post-process and Update
                 x_next = x_scaler.inverse_transform_mean(x_next_scaled)
                 y_next = test_func.real(x_next)
+                raw_action_scale = np.maximum((upper_bound - lower_bound).reshape(-1), 1e-8)
+                raw_move_cost = np.linalg.norm((x_next.reshape(-1) - prev_x_raw) / raw_action_scale, ord=2)
                 
                 x_train = np.vstack((x_train, x_next))
                 y_train = np.vstack((y_train, y_next))
                 regrets.append(0 - np.max(y_train)) # Assuming global max is 0
+                scaled_move_costs.append(float(move_cost))
+                raw_move_costs.append(float(raw_move_cost))
 
             return {
                 "run_id": seed,
                 "regrets": regrets,
+                "scaled_move_costs": scaled_move_costs,
+                "raw_move_costs": raw_move_costs,
                 "avg_time": float(np.mean(decision_times)),
                 "std_time": float(np.std(decision_times)),
             }
@@ -119,6 +135,7 @@ def parse_args():
     parser.add_argument("--encoder-learning-rate", type=float, default=None)
     parser.add_argument("--reward-mode", choices=available_reward_modes(), default=None)
     parser.add_argument("--snake-path-cost-weight", type=float, default=None)
+    parser.add_argument("--movement-budget", type=float, default=None)
     parser.add_argument(
         "--reward-param",
         action="append",
@@ -194,6 +211,8 @@ def build_configs(args):
         rlbo_config.reward_mode = args.reward_mode
     if args.snake_path_cost_weight is not None:
         rlbo_config.snake_path_cost_weight = args.snake_path_cost_weight
+    if args.movement_budget is not None:
+        rlbo_config.movement_budget = args.movement_budget
     rlbo_config.reward_params = parse_reward_params(args)
 
     ppo_config = PPOConfig()
@@ -248,13 +267,33 @@ def make_run_start(run_id, config: ExperimentConfig):
 def write_run_result(output_dir: Path, config: ExperimentConfig, result):
     output_dir.mkdir(parents=True, exist_ok=True)
     run_path = output_dir / f"run_{result['run_id']:04d}.csv"
+    fieldnames = [
+        "Iteration",
+        "Regret",
+        "Scaled Move Cost",
+        "Raw Move Cost",
+        "Cumulative Scaled Move Cost",
+        "Cumulative Raw Move Cost",
+        "Avg Time",
+        "Std Time",
+    ]
     with run_path.open("w", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=["Iteration", "Regret", "Avg Time", "Std Time"])
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
+        cumulative_scaled_move_cost = 0.0
+        cumulative_raw_move_cost = 0.0
         for iteration, regret in enumerate(result["regrets"]):
+            scaled_move_cost = result.get("scaled_move_costs", [0.0] * len(result["regrets"]))[iteration]
+            raw_move_cost = result.get("raw_move_costs", [0.0] * len(result["regrets"]))[iteration]
+            cumulative_scaled_move_cost += scaled_move_cost
+            cumulative_raw_move_cost += raw_move_cost
             writer.writerow({
                 "Iteration": iteration,
                 "Regret": regret,
+                "Scaled Move Cost": scaled_move_cost,
+                "Raw Move Cost": raw_move_cost,
+                "Cumulative Scaled Move Cost": cumulative_scaled_move_cost,
+                "Cumulative Raw Move Cost": cumulative_raw_move_cost,
                 "Avg Time": result["avg_time"],
                 "Std Time": result["std_time"],
             })

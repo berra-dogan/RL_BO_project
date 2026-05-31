@@ -16,6 +16,7 @@ snake
 log_improvement
 normalized_improvement
 optimistic_improvement
+budgeted_exploration
 ```
 
 To add another reward:
@@ -264,6 +265,54 @@ cd /Users/berra.dogan/Desktop/Imperial-Coursework/thesis/my_implementation
 rsync -av bd225@login.cx3.hpc.imperial.ac.uk:~/my_implementation/EARL_BO/reward_finetune/ EARL_BO/reward_finetune/
 ```
 
+## 11. Calculate Movement Cost Used By Best Configs
+
+The normal result CSVs store regret and timing, but they do not store the
+selected `x_next` points. Because movement cost needs the selected points, use
+the movement-cost calculator to re-run a best config and record movement per BO
+iteration.
+
+For one or more rewards from `EARL_BO/reward_finetune/<reward>/tuning/best_config.json`:
+
+```bash
+cd ~/my_implementation
+source .venv/bin/activate
+
+.venv/bin/python EARL_BO/calculate_used_budget.py \
+  --reward snake earlbo log_improvement normalized_improvement optimistic_improvement \
+  --results-root reward_finetune \
+  --output-dir movement_cost_usage \
+  --device cpu
+```
+
+For explicit best-config paths:
+
+```bash
+.venv/bin/python EARL_BO/calculate_used_budget.py \
+  --best-config reward_finetune/snake/tuning/best_config.json \
+  --best-config reward_finetune/earlbo/tuning/best_config.json \
+  --output-dir movement_cost_usage \
+  --device cpu
+```
+
+Outputs:
+
+```text
+EARL_BO/movement_cost_usage/<reward>/movement_cost_by_iteration.csv
+EARL_BO/movement_cost_usage/<reward>/movement_cost_summary.json
+EARL_BO/movement_cost_usage/movement_cost_summary.json
+```
+
+For the dedicated budgeted-exploration tuning output:
+
+```bash
+.venv/bin/python EARL_BO/calculate_used_budget.py \
+  --reward budgeted_exploration \
+  --results-root budgeted_exploration_budget_grid \
+  --output-dir budgeted_exploration_movement_cost \
+  --device cpu
+```
+
 ## Better Parallel Version: One Config Per Array Job
 
 The script above creates 5 jobs, one per reward, and each job loops through all
@@ -280,12 +329,80 @@ With the current fast screening setup:
 
 ```text
 earlbo: 4 configs
+budgeted_exploration: 4 base configs x 4 budget/exploration settings = 16 configs
 snake: 4 base configs x 3 path-cost weights = 12 configs
 log_improvement: 4 base configs x 3 scale values = 12 configs
 normalized_improvement: 4 configs
 optimistic_improvement: 4 base configs x 3 std weights = 12 configs
 
-total = 44 array jobs
+total = 60 array jobs
+```
+
+The budget-aware reward uses:
+
+```text
+reward = improvement
+       + remaining_budget_fraction * explore_weight * GP_std
+       - (1 - remaining_budget_fraction) * path_cost_weight * move_cost
+       - over_budget_penalty * over_budget
+```
+
+This encourages exploration while movement budget remains and shifts toward
+shorter, exploitative moves as the budget is consumed. Its tuned parameters are:
+
+```text
+movement_budget
+reward_param_explore_weight
+reward_param_path_cost_weight
+reward_param_over_budget_penalty
+```
+
+To tune only the budget-aware reward with a dedicated parameter grid, use:
+
+```bash
+qsub submit_budgeted_exploration_param_tuning.pbs
+```
+
+That tunes only the reward-specific budget parameters while keeping the base
+PPO/search settings fixed. With the current compact grid it runs 9 configs in
+one PBS job:
+
+```text
+movement_budget in [2.0]
+reward_param_explore_weight in [0.1, 0.2, 0.5]
+reward_param_path_cost_weight in [0.05, 0.1, 0.2]
+reward_param_over_budget_penalty in [5.0]
+
+9 configs total = 1 budget x 3 explore weights x 3 path-cost weights x 1 over-budget penalty
+```
+
+If the job fails, resubmit the same PBS script; completed configs are skipped
+because the script uses `--skip-existing`.
+
+If you want one PBS job per config instead, use:
+
+```bash
+qsub submit_budgeted_exploration_param_array.pbs
+```
+
+That submits array indices `0-8`.
+
+It writes to:
+
+```text
+EARL_BO/budgeted_exploration_budget_grid/budgeted_exploration/
+```
+
+After it finishes, collect with:
+
+```bash
+.venv/bin/python EARL_BO/run_budgeted_exploration_tuning.py --collect --output-root budgeted_exploration_budget_grid
+```
+
+The best config will be:
+
+```text
+EARL_BO/budgeted_exploration_budget_grid/budgeted_exploration/tuning/best_config.json
 ```
 
 Use this PBS script instead:
@@ -298,10 +415,11 @@ This submits:
 
 ```text
 0-3     -> earlbo configs
-4-15    -> snake configs, including snake_path_cost_weight in [0.0, 0.01, 0.05]
-16-27   -> log_improvement configs, including scale in [0.5, 1.0, 2.0]
-28-31   -> normalized_improvement configs
-32-43   -> optimistic_improvement configs, including std_weight in [0.1, 0.2, 0.5]
+4-19    -> budgeted_exploration configs
+20-31   -> snake configs, including snake_path_cost_weight in [0.0, 0.01, 0.05]
+32-43   -> log_improvement configs, including scale in [0.5, 1.0, 2.0]
+44-47   -> normalized_improvement configs
+48-59   -> optimistic_improvement configs, including std_weight in [0.1, 0.2, 0.5]
 ```
 
 Each job writes one config result under:

@@ -46,6 +46,9 @@ SEARCH_SPACE = {
     # "snake_path_cost_weight": [0.0, 0.01, 0.05],
     # "reward_param_std_weight": [0.1, 0.2, 0.5],
     # "reward_param_scale": [0.5, 1.0, 2.0],
+    # "movement_budget": [0.5, 1.0, 2.0],
+    # "reward_param_explore_weight": [0.1, 0.2, 0.5],
+    # "reward_param_path_cost_weight": [0.01, 0.05, 0.1],
     "max_episodes": [120],
     "off_policy_episodes": [20],
     "encoder_learning_rate": [1e-3],
@@ -66,6 +69,7 @@ def parse_args():
     parser.add_argument("--output-root", default="batch_runs")
     parser.add_argument("--reward-mode", choices=available_reward_modes(), default="snake")
     parser.add_argument("--snake-path-cost-weight", type=float, default=None)
+    parser.add_argument("--movement-budget", type=float, default=None)
     parser.add_argument(
         "--reward-param",
         action="append",
@@ -94,6 +98,8 @@ def effective_base_settings(args):
         settings["reward_mode"] = args.reward_mode
     if args.snake_path_cost_weight is not None:
         settings["snake_path_cost_weight"] = args.snake_path_cost_weight
+    if args.movement_budget is not None:
+        settings["movement_budget"] = args.movement_budget
     return settings
 
 

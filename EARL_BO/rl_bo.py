@@ -37,6 +37,8 @@ class RL_BO():
         action_max_scaled,
         policy_file_num,
         horizon,
+        movement_budget_remaining=None,
+        movement_budget_total=None,
     ):
         # Features stay in scaled space; targets stay in original space and are scaled only for GP fitting.
         if torch.device(self.device).type == "cuda" and not torch.cuda.is_available():
@@ -57,6 +59,8 @@ class RL_BO():
             reward_mode=self.config.reward_mode,
             snake_path_cost_weight=self.config.snake_path_cost_weight,
             reward_params=self.config.reward_params,
+            movement_budget_remaining=movement_budget_remaining,
+            movement_budget_total=movement_budget_total,
             device=self.device,
         )
         encoder_optimizer = optim.Adam(
@@ -133,17 +137,20 @@ class RL_BO():
                     no_improvement_count = 0
 
                 # If no improvement for 15 consecutive times, terminate and use turbo acquisition
-                if no_improvement_count >= self.config.no_improvement_threshold:
+                if (
+                    self.config.reward_mode != "budgeted_exploration"
+                    and no_improvement_count >= self.config.no_improvement_threshold
+                ):
                     print(
                         f"No improvement for {self.config.no_improvement_threshold * self.config.update_episode} episodes. Terminating learning.")
                     x_next = env.turbo_acquisition()
-                    return x_next.reshape(1, -1)
+                    return env.project_to_remaining_budget(x_next)
 
                 if e == self.config.max_episodes:
                     final_average_score = score
 
         # Choose final action based on performance
-        if final_average_score < 1e-5:
+        if self.config.reward_mode != "budgeted_exploration" and final_average_score < 1e-5:
             print("Final average score is less than 1e-5. Using turbo acquisition.")
             x_next = env.turbo_acquisition()
         else:
@@ -152,5 +159,6 @@ class RL_BO():
             x_next = agent.get_action_eval(state)
             x_next = env.to_action(x_next)
 
+        x_next = env.project_to_remaining_budget(x_next)
         X_next = np.ravel(x_next)
         return X_next.reshape(1, -1)

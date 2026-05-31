@@ -1,5 +1,6 @@
 import argparse
 import csv
+import itertools
 import json
 import os
 import shutil
@@ -10,7 +11,6 @@ from run_experiments import (
     ROOT,
     SEARCH_SPACE,
     TUNE_BUDGET,
-    build_sweep,
     copy_run_snapshot,
     run_one,
     save_json,
@@ -18,61 +18,22 @@ from run_experiments import (
 )
 
 
-REWARD_PARAM_SPACE = {
-    "earlbo": [{}],
-    "budgeted_exploration": [
-        {
-            "movement_budget": 0.5,
-            "reward_param_explore_weight": 0.1,
-            "reward_param_path_cost_weight": 0.05,
-            "reward_param_over_budget_penalty": 10.0,
-        },
-        {
-            "movement_budget": 0.5,
-            "reward_param_explore_weight": 0.2,
-            "reward_param_path_cost_weight": 0.05,
-            "reward_param_over_budget_penalty": 10.0,
-        },
-        {
-            "movement_budget": 1.0,
-            "reward_param_explore_weight": 0.2,
-            "reward_param_path_cost_weight": 0.05,
-            "reward_param_over_budget_penalty": 10.0,
-        },
-        {
-            "movement_budget": 1.0,
-            "reward_param_explore_weight": 0.5,
-            "reward_param_path_cost_weight": 0.1,
-            "reward_param_over_budget_penalty": 10.0,
-        },
-    ],
-    "snake": [
-        {"snake_path_cost_weight": 0.0},
-        {"snake_path_cost_weight": 0.01},
-        {"snake_path_cost_weight": 0.05},
-    ],
-    "log_improvement": [
-        {"reward_param_scale": 0.5},
-        {"reward_param_scale": 1.0},
-        {"reward_param_scale": 2.0},
-    ],
-    "normalized_improvement": [{}],
-    "optimistic_improvement": [
-        {"reward_param_std_weight": 0.1},
-        {"reward_param_std_weight": 0.2},
-        {"reward_param_std_weight": 0.5},
-    ],
+BUDGETED_BASE_CONFIG = {key: values[0] for key, values in SEARCH_SPACE.items()}
+
+BUDGETED_PARAM_SPACE = {
+    "movement_budget": [2.0],
+    "reward_param_explore_weight": [0.1, 0.5, 1.0],
+    "reward_param_path_cost_weight": [0.05, 0.1, 0.5],
+    "reward_param_over_budget_penalty": [5.0],
 }
 
-REWARD_NAMES = tuple(REWARD_PARAM_SPACE)
+BUDGET_SCORE_MOVE_WEIGHT = 0.1
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(
-        description="Run or collect one flattened reward x hyperparameter array job."
-    )
+    parser = argparse.ArgumentParser(description="Tune only the budgeted_exploration reward.")
     parser.add_argument("--index", type=int, default=None)
-    parser.add_argument("--output-root", default="reward_finetune_array")
+    parser.add_argument("--output-root", default="budgeted_exploration_budget_grid")
     parser.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
     parser.add_argument("--skip-existing", action="store_true")
     parser.add_argument("--collect", action="store_true")
@@ -80,28 +41,18 @@ def parse_args():
     return parser.parse_args()
 
 
-def build_reward_sweep():
-    base_sweep = build_sweep()
+def build_budgeted_sweep():
     jobs = []
-    for reward_name in REWARD_NAMES:
-        reward_configs = []
-        for base_config in base_sweep:
-            for reward_config in REWARD_PARAM_SPACE[reward_name]:
-                reward_configs.append({**base_config, **reward_config})
-        for config_idx, config in enumerate(reward_configs):
-            jobs.append((reward_name, config_idx, config))
+    keys = list(BUDGETED_PARAM_SPACE.keys())
+    values = [BUDGETED_PARAM_SPACE[key] for key in keys]
+    for combo in itertools.product(*values):
+        reward_config = dict(zip(keys, combo))
+        jobs.append({**BUDGETED_BASE_CONFIG, **reward_config})
     return jobs
 
 
 def total_jobs():
-    return len(build_reward_sweep())
-
-
-def decode_index(index):
-    reward_sweep = build_reward_sweep()
-    if index < 0 or index >= len(reward_sweep):
-        raise IndexError(f"Index {index} outside valid range 0-{total_jobs() - 1}")
-    return reward_sweep[index]
+    return len(build_budgeted_sweep())
 
 
 def array_index(args):
@@ -113,9 +64,9 @@ def array_index(args):
         raise RuntimeError("Missing --index and PBS_ARRAY_INDEX is not set") from exc
 
 
-def runner_args(reward_name):
+def runner_args():
     return SimpleNamespace(
-        reward_mode=reward_name,
+        reward_mode="budgeted_exploration",
         snake_path_cost_weight=None,
         movement_budget=None,
         reward_param=[],
@@ -124,10 +75,14 @@ def runner_args(reward_name):
 
 
 def run_array_job(args):
+    sweep = build_budgeted_sweep()
     index = array_index(args)
-    reward_name, config_idx, config = decode_index(index)
-    output_root = (ROOT / args.output_root / reward_name).resolve()
-    run_dir = output_root / "tuning" / f"config_{config_idx:03d}"
+    if index < 0 or index >= len(sweep):
+        raise IndexError(f"Index {index} outside valid range 0-{total_jobs() - 1}")
+
+    config = sweep[index]
+    output_root = (ROOT / args.output_root / "budgeted_exploration").resolve()
+    run_dir = output_root / "tuning" / f"config_{index:03d}"
     result_path = run_dir / "result.json"
 
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -135,8 +90,8 @@ def run_array_job(args):
         run_dir / "config.json",
         {
             "array_index": index,
-            "reward": reward_name,
-            "config_id": config_idx,
+            "reward": "budgeted_exploration",
+            "config_id": index,
             "params": config,
             "budget": TUNE_BUDGET,
         },
@@ -147,8 +102,7 @@ def run_array_job(args):
         return
 
     print(f"array_index={index}")
-    print(f"reward={reward_name}")
-    print(f"config_id={config_idx}")
+    print("reward=budgeted_exploration")
     print(f"params={config}")
 
     result = run_one(
@@ -157,7 +111,7 @@ def run_array_job(args):
         TUNE_BUDGET,
         args.device,
         args.skip_existing,
-        runner_args(reward_name),
+        runner_args(),
     )
     save_json(result_path, result)
 
@@ -165,16 +119,12 @@ def run_array_job(args):
         raise RuntimeError(f"Array job failed: {result}")
 
 
-def collect_reward(output_root, reward_name):
-    tuning_root = output_root / reward_name / "tuning"
+def collect(args):
+    output_root = (ROOT / args.output_root / "budgeted_exploration").resolve()
+    tuning_root = output_root / "tuning"
     rows = []
-    reward_configs = [
-        (config_idx, config)
-        for candidate_reward, config_idx, config in build_reward_sweep()
-        if candidate_reward == reward_name
-    ]
 
-    for config_idx, config in reward_configs:
+    for config_idx, config in enumerate(build_budgeted_sweep()):
         run_dir = tuning_root / f"config_{config_idx:03d}"
         result_path = run_dir / "result.json"
         if result_path.exists():
@@ -190,7 +140,10 @@ def collect_reward(output_root, reward_name):
                 "summary_csv": str(result_csvs[0]),
                 "run_dir": str(run_dir),
             }
-        rows.append({"config_id": config_idx, **config, **result})
+        row = {"config_id": config_idx, **config, **result}
+        row.update(movement_metrics(run_dir))
+        row["budget_score"] = budget_score(row)
+        rows.append(row)
 
     tuning_root.mkdir(parents=True, exist_ok=True)
     results_csv = tuning_root / "tuning_results.csv"
@@ -202,25 +155,38 @@ def collect_reward(output_root, reward_name):
 
     valid_rows = [row for row in rows if row["status"] in ("ok", "skipped")]
     if not valid_rows:
-        print(f"No successful runs for {reward_name}. See {results_csv}")
-        return None
+        raise RuntimeError(f"No successful budgeted_exploration runs. See {results_csv}")
+    missing_movement = [
+        row["config_id"]
+        for row in valid_rows
+        if row.get("mean_total_scaled_move_cost") is None
+    ]
+    if missing_movement:
+        print(
+            "[warn] Movement-cost columns were missing for configs: "
+            + ", ".join(str(config_id) for config_id in missing_movement)
+        )
+        print(
+            "[warn] Those rows were scored by regret only. Re-run into a fresh "
+            "output root to use budget-aware scoring."
+        )
 
     best_row = min(
         valid_rows,
-        key=lambda row: (row["score"], row["final_regret"], row["best_regret"]),
+        key=lambda row: (row["budget_score"], row["final_regret"], row["best_regret"]),
     )
     best_payload = {
         "config_id": best_row["config_id"],
         "params": {
             key: best_row[key]
             for key in best_row
-            if key in SEARCH_SPACE
-            or key == "movement_budget"
-            or key == "snake_path_cost_weight"
-            or key.startswith("reward_param_")
+            if key in SEARCH_SPACE or key == "movement_budget" or key.startswith("reward_param_")
         },
-        "reward": reward_name,
+        "reward": "budgeted_exploration",
         "score": best_row["score"],
+        "budget_score": best_row["budget_score"],
+        "mean_total_scaled_move_cost": best_row.get("mean_total_scaled_move_cost"),
+        "mean_total_raw_move_cost": best_row.get("mean_total_raw_move_cost"),
         "final_regret": best_row["final_regret"],
         "best_regret": best_row["best_regret"],
         "summary_csv": best_row["summary_csv"],
@@ -234,31 +200,48 @@ def collect_reward(output_root, reward_name):
     best_payload["saved_run_dir"] = str(best_dir)
     best_payload["saved_summary_csv"] = str(best_dir / Path(best_row["summary_csv"]).name)
     save_json(tuning_root / "best_config.json", best_payload)
-    return best_payload
+    save_json(output_root / "budgeted_exploration_summary.json", best_payload)
+    print(f"Saved best config to {tuning_root / 'best_config.json'}")
 
 
-def collect(args):
-    output_root = (ROOT / args.output_root).resolve()
-    summary = {}
-    for reward_name in REWARD_NAMES:
-        best_payload = collect_reward(output_root, reward_name)
-        if best_payload is not None:
-            summary[reward_name] = best_payload
-    save_json(output_root / "reward_summary.json", summary)
-    print(f"Saved summary to {output_root / 'reward_summary.json'}")
+def movement_metrics(run_dir):
+    totals_scaled = []
+    totals_raw = []
+    for run_csv in sorted(Path(run_dir).glob("run_*.csv")):
+        with run_csv.open(newline="") as handle:
+            rows = list(csv.DictReader(handle))
+        if not rows or "Scaled Move Cost" not in rows[0] or "Raw Move Cost" not in rows[0]:
+            continue
+        totals_scaled.append(sum(float(row["Scaled Move Cost"]) for row in rows))
+        totals_raw.append(sum(float(row["Raw Move Cost"]) for row in rows))
+
+    if not totals_scaled:
+        return {
+            "mean_total_scaled_move_cost": None,
+            "mean_total_raw_move_cost": None,
+        }
+
+    return {
+        "mean_total_scaled_move_cost": sum(totals_scaled) / len(totals_scaled),
+        "mean_total_raw_move_cost": sum(totals_raw) / len(totals_raw),
+    }
+
+
+def budget_score(row):
+    move_cost = row.get("mean_total_scaled_move_cost")
+    if move_cost is None:
+        return row["score"]
+    return row["score"] + BUDGET_SCORE_MOVE_WEIGHT * move_cost
 
 
 def main():
     args = parse_args()
-
     if args.print_total:
         print(total_jobs())
         return
-
     if args.collect:
         collect(args)
         return
-
     run_array_job(args)
 
 

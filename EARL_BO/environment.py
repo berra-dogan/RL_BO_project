@@ -17,6 +17,8 @@ class Env_encoder:
         reward_mode,
         snake_path_cost_weight,
         reward_params,
+        movement_budget_remaining,
+        movement_budget_total,
         device,
     ):
         # Initialize the environment in scaled feature space.
@@ -38,6 +40,9 @@ class Env_encoder:
         self.reward_params = dict(reward_params or {})
         self.reward_params.setdefault("path_cost_weight", snake_path_cost_weight)
         self.reward_function = get_reward_function(reward_mode)
+        self.initial_budget_remaining = movement_budget_remaining
+        self.movement_budget_remaining = movement_budget_remaining
+        self.movement_budget_total = movement_budget_total
         self.turbo = ModifiedTurbo1(X_train_scaled, scaler_EI.fit_transform(y_train_raw), self.lb, self.ub, device=self.device, verbose=True)
 
 
@@ -46,6 +51,7 @@ class Env_encoder:
         self.X_train = self.X_train_scaled
         self.y_train = self.y_train_raw
         self.y_max = self.y_max_raw
+        self.movement_budget_remaining = self.initial_budget_remaining
 
         # Fit the scaler and model
         y_train_scaled = self.scaler_EI.fit_transform(self.y_train)
@@ -72,8 +78,11 @@ class Env_encoder:
         next_observation = np.array([np.random.normal(mean[0], std[0])]).reshape(-1, )
         improvement = max(0, (next_observation - self.y_max)[0])
         next_action = action.reshape(-1)
-        scale = np.maximum(self.ub - self.lb, 1e-8)
+        scale = self.action_scale()
         move_cost = np.linalg.norm((next_action - prev_action) / scale, ord=2)
+        over_budget = 0.0
+        if self.movement_budget_remaining is not None:
+            over_budget = max(0.0, move_cost - self.movement_budget_remaining)
         reward_context = RewardContext(
             improvement=float(improvement),
             move_cost=float(move_cost),
@@ -85,8 +94,13 @@ class Env_encoder:
             prev_action=prev_action,
             lower_bound=self.lb,
             upper_bound=self.ub,
+            remaining_budget=self.movement_budget_remaining,
+            total_budget=self.movement_budget_total,
+            over_budget=float(over_budget),
         )
         reward = float(self.reward_function(reward_context, self.reward_params))
+        if self.movement_budget_remaining is not None:
+            self.movement_budget_remaining = max(0.0, self.movement_budget_remaining - move_cost)
 
         # Update training data
         self.X_train = np.vstack((self.X_train, action))
@@ -122,3 +136,24 @@ class Env_encoder:
         # Use TuRBO for acquisition
         action = self.turbo.optimize()
         return np.array(action).flatten()
+
+    def action_scale(self):
+        return np.maximum(self.action_max - self.action_min, 1e-8)
+
+    def move_cost(self, action):
+        prev_action = self.X_train_scaled[-1].reshape(-1)
+        next_action = np.array(action).reshape(-1)
+        return float(np.linalg.norm((next_action - prev_action) / self.action_scale(), ord=2))
+
+    def project_to_remaining_budget(self, action):
+        if self.initial_budget_remaining is None:
+            return np.array(action).reshape(1, -1)
+
+        action = np.array(action).reshape(-1)
+        prev_action = self.X_train_scaled[-1].reshape(-1)
+        move_cost = self.move_cost(action)
+        if move_cost <= self.initial_budget_remaining or move_cost <= 1e-12:
+            return action.reshape(1, -1)
+
+        ratio = max(self.initial_budget_remaining, 0.0) / move_cost
+        return (prev_action + ratio * (action - prev_action)).reshape(1, -1)

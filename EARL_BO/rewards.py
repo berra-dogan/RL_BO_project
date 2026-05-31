@@ -16,6 +16,15 @@ class RewardContext:
     prev_action: np.ndarray
     lower_bound: np.ndarray
     upper_bound: np.ndarray
+    remaining_budget: float | None = None
+    total_budget: float | None = None
+    over_budget: float = 0.0
+
+    @property
+    def remaining_budget_fraction(self) -> float:
+        if self.remaining_budget is None or self.total_budget is None or self.total_budget <= 0:
+            return 1.0
+        return float(np.clip(self.remaining_budget / self.total_budget, 0.0, 1.0))
 
 
 RewardFunction = Callable[[RewardContext, dict[str, float]], float]
@@ -45,7 +54,21 @@ def optimistic_improvement_reward(ctx: RewardContext, params: dict[str, float]) 
     return max(0.0, ctx.mean + std_weight * ctx.std - ctx.y_max)
 
 
+def budgeted_exploration_reward(ctx: RewardContext, params: dict[str, float]) -> float:
+    explore_weight = params.get("explore_weight", 0.2)
+    path_cost_weight = params.get("path_cost_weight", 0.05)
+    over_budget_penalty = params.get("over_budget_penalty", 10.0)
+    remaining_fraction = ctx.remaining_budget_fraction
+
+    exploration_bonus = remaining_fraction * explore_weight * max(ctx.std, 0.0)
+    path_penalty = (1.0 - remaining_fraction) * path_cost_weight * ctx.move_cost
+    budget_violation_penalty = over_budget_penalty * ctx.over_budget
+
+    return ctx.improvement + exploration_bonus - path_penalty - budget_violation_penalty
+
+
 REWARD_FUNCTIONS: dict[str, RewardFunction] = {
+    "budgeted_exploration": budgeted_exploration_reward,
     "earlbo": earlbo_reward,
     "snake": snake_reward,
     "log_improvement": log_improvement_reward,
@@ -64,4 +87,3 @@ def get_reward_function(name: str) -> RewardFunction:
     except KeyError as exc:
         choices = ", ".join(available_reward_modes())
         raise ValueError(f"Unknown reward mode '{name}'. Available modes: {choices}") from exc
-
