@@ -1,7 +1,24 @@
-/venv
+# Python
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyd
 *.so
+
+# Virtual environments
+venv/
+.venv/
+
+# Local/editor files
 .DS_Store
+.vscode/
+
+# Generated experiment outputs
+output/
 *.csv
-batch_runs_earl_bo
+*.o[0-9]*
+*.e[0-9]*
+
+# Legacy/generated directories
+EARL_BO/
+batch_runs_earl_bo/

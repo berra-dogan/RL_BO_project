@@ -1,0 +1,36 @@
+#!/bin/bash
+#PBS -N budgeted_array
+#PBS -l select=1:ncpus=2:mem=8gb
+#PBS -l walltime=02:00:00
+
+cd "$PBS_O_WORKDIR"
+
+module purge
+module load tools/prod
+module load Python/3.11.3-GCCcore-12.3.0
+source .venv/bin/activate
+
+export OMP_NUM_THREADS=2
+export MKL_NUM_THREADS=2
+export OPENBLAS_NUM_THREADS=2
+
+PYTHON=".venv/bin/python"
+TOTAL=$("$PYTHON" src/experiments/run_budgeted_exploration_tuning.py --print-total)
+OUTPUT_ROOT="../output/budgeted_exploration_budget_grid"
+ARRAY_INDEX="${PBS_ARRAY_INDEX:-${ARRAY_INDEX:-0}}"
+
+if [ "$ARRAY_INDEX" -ge "$TOTAL" ]; then
+  echo "Skipping ARRAY_INDEX=$ARRAY_INDEX because it is >= TOTAL=$TOTAL"
+  exit 0
+fi
+
+echo "Array index: $ARRAY_INDEX"
+echo "Total configs: $TOTAL"
+echo "Output root: $OUTPUT_ROOT"
+echo "Running one budgeted_exploration config"
+
+"$PYTHON" src/experiments/run_budgeted_exploration_tuning.py \
+  --index "$ARRAY_INDEX" \
+  --device cpu \
+  --output-root "$OUTPUT_ROOT" \
+  --skip-existing

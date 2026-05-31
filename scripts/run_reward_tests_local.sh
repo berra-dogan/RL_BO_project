@@ -11,20 +11,20 @@ if [ ! -x "venv/bin/python" ]; then
 fi
 
 PYTHON_BIN="venv/bin/python"
-OUTPUT_ROOT="${OUTPUT_ROOT:-reward_finetune_reward_params}"
+OUTPUT_ROOT="${OUTPUT_ROOT:-../output/reward_finetune_reward_params}"
 
 run_reward_test() {
   local reward="$1"
   shift
 
-  local best_config="EARL_BO/${OUTPUT_ROOT}/${reward}/tuning/best_config.json"
+  local best_config="output/reward_finetune_reward_params/${reward}/tuning/best_config.json"
   if [ ! -f "$best_config" ]; then
     echo "[skip] Missing tuned config: $best_config"
     return 0
   fi
 
   echo "[test] reward=${reward}"
-  "$PYTHON_BIN" EARL_BO/run_experiments.py \
+  "$PYTHON_BIN" src/experiments/run_one_reward_experiments.py \
     --mode test \
     --device cpu \
     --output-root "${OUTPUT_ROOT}/${reward}" \
@@ -34,11 +34,10 @@ run_reward_test() {
 }
 
 run_reward_test earlbo
-run_reward_test budgeted_exploration
 run_reward_test snake
 run_reward_test log_improvement
 run_reward_test normalized_improvement
 run_reward_test optimistic_improvement
 
 echo "[done] Test outputs:"
-find "EARL_BO/${OUTPUT_ROOT}" -path '*/test_best/test_config.json' -print
+find "output/reward_finetune_reward_params" -path '*/test_best/test_config.json' -print

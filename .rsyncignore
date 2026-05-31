@@ -3,6 +3,7 @@
 .rsyncignore
 .vscode
 .DS_Store
+
 venv
 .venv
 __pycache__
@@ -10,7 +11,11 @@ __pycache__
 *.pyo
 *.pyd
 *.so
+
+output
 *.csv
-EARL_BO/__pycache__
-EARL_BO/results
-EARL_BO/batch_runs_earl_bo
+*.o[0-9]*
+*.e[0-9]*
+
+EARL_BO
+batch_runs_earl_bo

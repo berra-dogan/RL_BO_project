@@ -1,0 +1,25 @@
+#!/bin/bash
+#PBS -N calc_budgeted
+#PBS -l select=1:ncpus=2:mem=8gb
+#PBS -l walltime=04:00:00
+
+cd "$PBS_O_WORKDIR"
+
+module purge
+module load tools/prod
+module load Python/3.11.3-GCCcore-12.3.0
+source .venv/bin/activate
+
+export OMP_NUM_THREADS=2
+export MKL_NUM_THREADS=2
+export OPENBLAS_NUM_THREADS=2
+
+RESULTS_ROOT="output/budgeted_exploration_budget_grid"
+
+echo "Using budgeted results root: $RESULTS_ROOT"
+
+.venv/bin/python src/experiments/calculate_used_budget.py \
+  --reward budgeted_exploration \
+  --results-root "$RESULTS_ROOT" \
+  --output-dir output/budgeted_exploration_movement_cost \
+  --device cpu
