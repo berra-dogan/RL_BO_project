@@ -23,31 +23,37 @@ from run_one_reward_experiments import (
 )
 
 
-BUDGETED_BASE_CONFIG = {key: values[0] for key, values in SEARCH_SPACE.items()}
-BUDGETED_TUNE_BUDGET = {"num_runs": 1, "num_experiments": 20}
+REWARD_NAME = "lookahead_budgeted_exploration"
+LOOKAHEAD_BASE_CONFIG = {key: values[0] for key, values in SEARCH_SPACE.items()}
+LOOKAHEAD_TUNE_BUDGET = {"num_runs": 1, "num_experiments": 20}
 
-BUDGETED_PARAM_SPACE = {
+LOOKAHEAD_PARAM_SPACE = {
     "movement_budget": [5],
     "reward_param_explore_weight": [5.0],
-    "reward_param_path_cost_weight": [0.05, 0.1], #0.2
-    "reward_param_over_budget_penalty": [0.0], #0
+    "reward_param_path_cost_weight": [0.05, 0.1],
+    "reward_param_future_path_cost_weight": [0.005, 0.01, 0.05],
+    "reward_param_future_optimism_weight": [0.5, 1.0, 2.0],
+    "reward_param_future_softmax_temperature": [1.0],
+    "reward_param_over_budget_penalty": [0.0],
 }
 
 BUDGET_SCORE_MOVE_WEIGHT = 0.1
 
 
-def budgeted_base_settings(config):
+def lookahead_base_settings(config):
     settings = dict(BASE_SETTINGS)
-    settings["reward_mode"] = "budgeted_exploration"
+    settings["reward_mode"] = REWARD_NAME
     if "movement_budget" in config:
         settings["movement_budget"] = config["movement_budget"]
     return settings
 
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Tune only the budgeted_exploration reward.")
+    parser = argparse.ArgumentParser(
+        description="Tune only the lookahead_budgeted_exploration reward."
+    )
     parser.add_argument("--index", type=int, default=None)
-    parser.add_argument("--output-root", default="budgeted_exploration_budget_grid")
+    parser.add_argument("--output-root", default="lookahead_budgeted_exploration_budget_grid")
     parser.add_argument("--device", choices=("cpu", "cuda"), default="cpu")
     parser.add_argument("--skip-existing", action="store_true")
     parser.add_argument("--collect", action="store_true")
@@ -55,18 +61,18 @@ def parse_args():
     return parser.parse_args()
 
 
-def build_budgeted_sweep():
+def build_lookahead_sweep():
     jobs = []
-    keys = list(BUDGETED_PARAM_SPACE.keys())
-    values = [BUDGETED_PARAM_SPACE[key] for key in keys]
+    keys = list(LOOKAHEAD_PARAM_SPACE.keys())
+    values = [LOOKAHEAD_PARAM_SPACE[key] for key in keys]
     for combo in itertools.product(*values):
         reward_config = dict(zip(keys, combo))
-        jobs.append({**BUDGETED_BASE_CONFIG, **reward_config})
+        jobs.append({**LOOKAHEAD_BASE_CONFIG, **reward_config})
     return jobs
 
 
 def total_jobs():
-    return len(build_budgeted_sweep())
+    return len(build_lookahead_sweep())
 
 
 def array_index(args):
@@ -80,7 +86,7 @@ def array_index(args):
 
 def runner_args():
     return SimpleNamespace(
-        reward_mode="budgeted_exploration",
+        reward_mode=REWARD_NAME,
         snake_path_cost_weight=None,
         movement_budget=None,
         reward_param=[],
@@ -89,22 +95,22 @@ def runner_args():
 
 
 def run_array_job(args):
-    sweep = build_budgeted_sweep()
+    sweep = build_lookahead_sweep()
     index = array_index(args)
     if index < 0 or index >= len(sweep):
         raise IndexError(f"Index {index} outside valid range 0-{total_jobs() - 1}")
 
     config = sweep[index]
-    output_root = (ROOT / args.output_root / "budgeted_exploration").resolve()
+    output_root = (ROOT / args.output_root / REWARD_NAME).resolve()
     run_dir = output_root / "tuning" / f"config_{index:03d}"
     result_path = run_dir / "result.json"
     config_path = run_dir / "config.json"
     expected_config = {
         "array_index": index,
-        "reward": "budgeted_exploration",
+        "reward": REWARD_NAME,
         "config_id": index,
         "params": config,
-        "budget": BUDGETED_TUNE_BUDGET,
+        "budget": LOOKAHEAD_TUNE_BUDGET,
     }
 
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -114,20 +120,20 @@ def run_array_job(args):
             print(f"Result exists, skipping: {result_path}")
             return
         raise RuntimeError(
-            "Existing result does not match the current budgeted_exploration grid. "
+            "Existing result does not match the current lookahead grid. "
             f"Use a fresh --output-root or remove stale directory: {run_dir}"
         )
 
     save_json(config_path, expected_config)
 
     print(f"array_index={index}")
-    print("reward=budgeted_exploration")
+    print(f"reward={REWARD_NAME}")
     print(f"params={config}")
 
     result = run_one(
         config,
         run_dir,
-        BUDGETED_TUNE_BUDGET,
+        LOOKAHEAD_TUNE_BUDGET,
         args.device,
         args.skip_existing,
         runner_args(),
@@ -139,11 +145,11 @@ def run_array_job(args):
 
 
 def collect(args):
-    output_root = (ROOT / args.output_root / "budgeted_exploration").resolve()
+    output_root = (ROOT / args.output_root / REWARD_NAME).resolve()
     tuning_root = output_root / "tuning"
     rows = []
 
-    for config_idx, config in enumerate(build_budgeted_sweep()):
+    for config_idx, config in enumerate(build_lookahead_sweep()):
         run_dir = tuning_root / f"config_{config_idx:03d}"
         result_path = run_dir / "result.json"
         if result_path.exists():
@@ -174,21 +180,7 @@ def collect(args):
 
     valid_rows = [row for row in rows if row["status"] in ("ok", "skipped")]
     if not valid_rows:
-        raise RuntimeError(f"No successful budgeted_exploration runs. See {results_csv}")
-    missing_movement = [
-        row["config_id"]
-        for row in valid_rows
-        if row.get("mean_total_scaled_move_cost") is None
-    ]
-    if missing_movement:
-        print(
-            "[warn] Movement-cost columns were missing for configs: "
-            + ", ".join(str(config_id) for config_id in missing_movement)
-        )
-        print(
-            "[warn] Those rows were scored by regret only. Re-run into a fresh "
-            "output root to use budget-aware scoring."
-        )
+        raise RuntimeError(f"No successful {REWARD_NAME} runs. See {results_csv}")
 
     best_row = min(
         valid_rows,
@@ -201,8 +193,8 @@ def collect(args):
             for key in best_row
             if key in SEARCH_SPACE or key == "movement_budget" or key.startswith("reward_param_")
         },
-        "base_settings": budgeted_base_settings(best_row),
-        "reward": "budgeted_exploration",
+        "base_settings": lookahead_base_settings(best_row),
+        "reward": REWARD_NAME,
         "score": best_row["score"],
         "budget_score": best_row["budget_score"],
         "mean_total_scaled_move_cost": best_row.get("mean_total_scaled_move_cost"),
@@ -220,7 +212,7 @@ def collect(args):
     best_payload["saved_run_dir"] = str(best_dir)
     best_payload["saved_summary_csv"] = str(best_dir / Path(best_row["summary_csv"]).name)
     save_json(tuning_root / "best_config.json", best_payload)
-    save_json(output_root / "budgeted_exploration_summary.json", best_payload)
+    save_json(output_root / "lookahead_budgeted_exploration_summary.json", best_payload)
     print(f"Saved best config to {tuning_root / 'best_config.json'}")
 
 
@@ -259,9 +251,11 @@ def main():
     if args.print_total:
         print(total_jobs())
         return
+
     if args.collect:
         collect(args)
         return
+
     run_array_job(args)
 
 

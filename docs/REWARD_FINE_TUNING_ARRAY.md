@@ -16,10 +16,15 @@ snake
 log_improvement
 normalized_improvement
 optimistic_improvement
+budgeted_exploration
+lookahead_budgeted_exploration
 ```
 
 `budgeted_exploration` is intentionally tuned separately with
 `src/experiments/run_budgeted_exploration_tuning.py`.
+The `lookahead_budgeted_exploration` reward is a separate path-aware reward
+defined in `docs/REWARD_FUNCTIONS.md` and is intentionally tuned separately
+with `src/experiments/run_lookahead_budgeted_exploration_tuning.py`.
 
 To add another reward:
 
@@ -37,8 +42,8 @@ Example:
 SEARCH_SPACE = {
     "max_episodes": [300],
     "off_policy_episodes": [20, 40],
-    "encoder_learning_rate": [1e-3, 1e-2],
-    "ppo_learning_rate": [1e-4, 2e-4],
+    "encoder_learning_rate": [1e-3],
+    "ppo_learning_rate": [1e-4],
     "ppo_action_std": [0.1],
     "ppo_action_decay": [0.99],
     "ppo_gamma": [0.95],
@@ -340,16 +345,15 @@ qsub cluster/submit_budgeted_exploration_param_tuning.pbs
 ```
 
 That tunes only the reward-specific budget parameters while keeping the base
-PPO/search settings fixed. With the current compact grid it runs 12 configs in
-four grouped PBS array jobs:
+PPO/search settings fixed. With the current compact grid it runs 1 config:
 
 ```text
-movement_budget in [3.589635113621649]
-reward_param_explore_weight in [1.0, 2.0, 4.0]
-reward_param_path_cost_weight in [0.0, 0.01, 0.05, 0.1]
-reward_param_over_budget_penalty in [5.0]
+movement_budget in [5]
+reward_param_explore_weight in [5.0]
+reward_param_path_cost_weight in [0.1]
+reward_param_over_budget_penalty in [0.0]
 
-12 configs total = 1 budget x 3 explore weights x 4 path-cost weights x 1 over-budget penalty
+1 config total
 ```
 
 If the job fails, resubmit the same PBS script; completed configs are skipped
@@ -361,7 +365,7 @@ If you want one PBS job per config instead, use:
 qsub cluster/submit_budgeted_exploration_param_array.pbs
 ```
 
-That submits array indices `0-11`.
+That submits array index `0`.
 
 It writes to:
 
@@ -381,7 +385,80 @@ The best config will be:
 output/budgeted_exploration_budget_grid/budgeted_exploration/tuning/best_config.json
 ```
 
-Use this PBS script instead:
+## Dedicated Lookahead Budgeted Exploration Tuning
+
+The path-aware lookahead budgeted reward is tuned separately from the standard
+reward array and separately from `budgeted_exploration`.
+
+Check the current number of lookahead configs:
+
+```bash
+.venv/bin/python src/experiments/run_lookahead_budgeted_exploration_tuning.py --print-total
+```
+
+Expected:
+
+```text
+9
+```
+
+The current compact grid is:
+
+```text
+movement_budget in [5]
+reward_param_explore_weight in [5.0]
+reward_param_path_cost_weight in [0.1]
+reward_param_future_path_cost_weight in [0.01, 0.05, 0.1]
+reward_param_future_optimism_weight in [0.5, 1.0, 2.0]
+reward_param_future_softmax_temperature in [1.0]
+reward_param_over_budget_penalty in [0.0]
+
+9 configs total = 3 future path weights x 3 future optimism weights
+```
+
+To tune it with grouped PBS jobs:
+
+```bash
+qsub cluster/group_submit_lookahead_reward_finetune.pbs
+```
+
+That submits array indices `0-2`; each array job runs 3 configs.
+
+If you want one PBS job per config instead, use:
+
+```bash
+qsub cluster/submit_lookahead_reward_config_array.pbs
+```
+
+That submits array indices `0-8`.
+
+It writes to:
+
+```text
+output/lookahead_budgeted_exploration_budget_grid/lookahead_budgeted_exploration/
+```
+
+After it finishes, collect with:
+
+```bash
+.venv/bin/python src/experiments/run_lookahead_budgeted_exploration_tuning.py \
+  --collect \
+  --output-root ../output/lookahead_budgeted_exploration_budget_grid
+```
+
+The best config will be:
+
+```text
+output/lookahead_budgeted_exploration_budget_grid/lookahead_budgeted_exploration/tuning/best_config.json
+```
+
+To test the selected best config:
+
+```bash
+qsub cluster/submit_lookahead_reward_test.pbs
+```
+
+## Standard Reward Array
 
 ```bash
 qsub cluster/submit_reward_config_array.pbs

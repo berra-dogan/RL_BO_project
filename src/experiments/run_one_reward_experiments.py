@@ -39,7 +39,7 @@ BASE_SETTINGS = {
     "snake_path_cost_weight": 0.0,
 }
 
-TUNE_BUDGET = {"num_runs": 1, "num_experiments": 5}
+TUNE_BUDGET = {"num_runs": 1, "num_experiments": 20}
 TEST_BUDGET = {"num_runs": 3, "num_experiments": 1}
 
 SEARCH_SPACE = {
@@ -56,8 +56,8 @@ SEARCH_SPACE = {
     "max_episodes": [120],
     "off_policy_episodes": [20],
     "encoder_learning_rate": [1e-3],
-    "ppo_learning_rate": [1e-4, 2e-4],
-    "ppo_action_std": [0.05, 0.1],
+    "ppo_learning_rate": [1e-4],
+    "ppo_action_std": [0.05],
     "ppo_action_decay": [0.99],
     "ppo_gamma": [0.95],
     "ppo_entropy_coeff": [0.01],

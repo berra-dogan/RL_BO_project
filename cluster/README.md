@@ -1,5 +1,8 @@
 # Cluster PBS Scripts
 
+For the full command checklist for syncing, tuning, collecting, testing, and
+resyncing results, see `docs/CLUSTER_COMMANDS.md`.
+
 Run these from the repository root on the cluster, for example:
 
 ```bash
@@ -17,6 +20,12 @@ qsub cluster/submit_budgeted_exploration_param_tuning.pbs
 
 - `submit_budgeted_exploration_param_array.pbs`: one PBS array job per budgeted config.
 - `submit_budgeted_exploration_param_tuning.pbs`: grouped budgeted sweep, 3 configs per PBS array job.
+
+## Lookahead Budgeted Exploration
+
+- `submit_lookahead_reward_config_array.pbs`: one PBS array job per lookahead config.
+- `group_submit_lookahead_reward_finetune.pbs`: grouped lookahead sweep, 3 configs per PBS array job.
+- `submit_lookahead_reward_test.pbs`: tests the selected lookahead `best_config.json`.
 
 ## Movement Cost
 

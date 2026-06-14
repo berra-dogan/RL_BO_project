@@ -137,8 +137,12 @@ class RL_BO():
                     no_improvement_count = 0
 
                 # If no improvement for 15 consecutive times, terminate and use turbo acquisition
+                budget_aware_rewards = {
+                    "budgeted_exploration",
+                    "lookahead_budgeted_exploration",
+                }
                 if (
-                    self.config.reward_mode != "budgeted_exploration"
+                    self.config.reward_mode not in budget_aware_rewards
                     and no_improvement_count >= self.config.no_improvement_threshold
                 ):
                     print(
@@ -150,7 +154,11 @@ class RL_BO():
                     final_average_score = score
 
         # Choose final action based on performance
-        if self.config.reward_mode != "budgeted_exploration" and final_average_score < 1e-5:
+        budget_aware_rewards = {
+            "budgeted_exploration",
+            "lookahead_budgeted_exploration",
+        }
+        if self.config.reward_mode not in budget_aware_rewards and final_average_score < 1e-5:
             print("Final average score is less than 1e-5. Using turbo acquisition.")
             x_next = env.turbo_acquisition()
         else:

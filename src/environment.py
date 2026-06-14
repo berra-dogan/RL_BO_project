@@ -80,6 +80,7 @@ class Env_encoder:
         next_action = action.reshape(-1)
         scale = self.action_scale()
         move_cost = np.linalg.norm((next_action - prev_action) / scale, ord=2)
+        expected_future_move_cost = self.estimate_expected_future_move_cost(next_action, scale)
         over_budget = 0.0
         if self.movement_budget_remaining is not None:
             over_budget = max(0.0, move_cost - self.movement_budget_remaining)
@@ -97,6 +98,7 @@ class Env_encoder:
             remaining_budget=self.movement_budget_remaining,
             total_budget=self.movement_budget_total,
             over_budget=float(over_budget),
+            expected_future_move_cost=float(expected_future_move_cost),
         )
         reward = float(self.reward_function(reward_context, self.reward_params))
         if self.movement_budget_remaining is not None:
@@ -139,6 +141,38 @@ class Env_encoder:
 
     def action_scale(self):
         return np.maximum(self.action_max - self.action_min, 1e-8)
+
+    def estimate_expected_future_move_cost(self, action, scale):
+        default_future_weight = (
+            0.05 if self.reward_mode == "lookahead_budgeted_exploration" else 0.0
+        )
+        future_weight = self.reward_params.get("future_path_cost_weight", default_future_weight)
+        if future_weight <= 0.0:
+            return 0.0
+
+        n_candidates = int(self.reward_params.get("future_num_candidates", 128))
+        if n_candidates <= 0:
+            return 0.0
+
+        optimism = self.reward_params.get("future_optimism_weight", 1.0)
+        temperature = max(self.reward_params.get("future_softmax_temperature", 1.0), 1e-8)
+
+        candidates = np.random.uniform(self.lb, self.ub, size=(n_candidates, self.num_action))
+        means, stds = self.model.predict(candidates, return_std=True)
+        means = self.scaler_EI.inverse_transform_mean(means.reshape(-1,))
+        stds = self.scaler_EI.inverse_transform_std(stds.reshape(-1,))
+
+        future_scores = np.maximum(0.0, means + optimism * stds - self.y_max)
+        if np.all(future_scores <= 1e-12):
+            weights = np.full(n_candidates, 1.0 / n_candidates)
+        else:
+            logits = future_scores / temperature
+            logits = logits - np.max(logits)
+            weights = np.exp(logits)
+            weights = weights / np.sum(weights)
+
+        distances = np.linalg.norm((candidates - action.reshape(1, -1)) / scale, ord=2, axis=1)
+        return float(np.dot(weights, distances))
 
     def move_cost(self, action):
         prev_action = self.X_train_scaled[-1].reshape(-1)
