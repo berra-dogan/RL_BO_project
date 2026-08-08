@@ -1,0 +1,44 @@
+#!/bin/bash
+#PBS -N lofo_collect
+#PBS -l select=1:ncpus=2:mem=8gb
+#PBS -l walltime=00:30:00
+
+set -euo pipefail
+cd "$PBS_O_WORKDIR"
+
+module purge
+module load tools/prod
+module load Python/3.11.3-GCCcore-12.3.0
+source .venv/bin/activate
+
+export OMP_NUM_THREADS=2
+export MKL_NUM_THREADS=2
+export OPENBLAS_NUM_THREADS=2
+
+source scripts/lofo_defaults.sh
+
+PYTHON=".venv/bin/python"
+OUTPUT_ROOT="${LOFO_OUTPUT_ROOT:-../output/leave_one_function_out}"
+IFS=: read -ra FUNCTIONS <<< "${LOFO_FUNCTIONS:-${LOFO_DEFAULT_FUNCTIONS// /:}}"
+IFS=: read -ra DIMENSIONS <<< "${LOFO_DIMENSIONS:-$LOFO_DEFAULT_DIMENSION}"
+IFS=: read -ra REWARDS <<< "${LOFO_REWARDS:-${LOFO_DEFAULT_REWARDS// /:}}"
+REWARD_ARGS=(--reward "${REWARDS[@]}")
+GLOBAL_INDEX="${PBS_ARRAY_INDEX:?PBS_ARRAY_INDEX is required}"
+DIMENSION_INDEX=$((GLOBAL_INDEX / ${#FUNCTIONS[@]}))
+FOLD_INDEX=$((GLOBAL_INDEX % ${#FUNCTIONS[@]}))
+
+if [ "$DIMENSION_INDEX" -ge "${#DIMENSIONS[@]}" ]; then
+  echo "Global index $GLOBAL_INDEX is outside the selected dimensions" >&2
+  exit 1
+fi
+
+TEST_FUNCTION="${FUNCTIONS[$FOLD_INDEX]}"
+DIMENSION="${DIMENSIONS[$DIMENSION_INDEX]}"
+echo "Collecting dimension $DIMENSION, held-out function $TEST_FUNCTION"
+
+"$PYTHON" src/experiments/run_leave_one_function_out.py \
+  --test-function "$TEST_FUNCTION" \
+  --dimension "$DIMENSION" \
+  "${REWARD_ARGS[@]}" \
+  --mode collect \
+  --output-root "$OUTPUT_ROOT"

@@ -311,6 +311,18 @@ Ways to encourage fuller budget use:
 
 ## `lookahead_budgeted_exploration`
 
+Purpose:
+
+`budgeted_exploration` is myopic: it asks whether the next point is useful and
+cheap to reach from the current point. `lookahead_budgeted_exploration` adds one
+extra question: after moving to this proposed point, would the agent be well
+positioned for plausible future evaluations?
+
+The reward does not run a full multi-step Bayesian optimization rollout.
+Instead, it computes a lightweight proxy for future travel cost under the
+current GP posterior. This makes the reward path-aware without making training
+as expensive as nested lookahead acquisition optimization.
+
 Formula:
 
 ```text
@@ -325,44 +337,84 @@ where:
 
 ```text
 rho = remaining_budget / total_budget
+budget_pressure = 1 / max(rho, 0.05)
 ```
 
-The additional future-cost term is:
+Expanded:
 
 ```text
-expected_future_path_penalty
-    = (1 / max(rho, 0.05)) * w_future * c_future
+R = immediate_improvement
+    + current_uncertainty_bonus
+    - immediate_movement_penalty
+    - expected_future_movement_penalty
+    - over_budget_penalty
 ```
 
-The expected future movement cost is estimated as a weighted average distance
-from the proposed next point `x_next` to a set of possible future points:
+with:
 
 ```text
-c_future = sum_i p_i * d(x_next, x_i)
+immediate_improvement = I
+current_uncertainty_bonus = rho * w_explore * max(sigma(x_next), 0)
+immediate_movement_penalty = budget_pressure * w_path * d(x_prev, x_next)
+expected_future_movement_penalty = budget_pressure * w_future * c_future
+over_budget_penalty = w_over * c_over
 ```
 
-Each possible future point `x_i` is weighted according to how attractive it
-looks under the current GP posterior:
+The key addition is `c_future`. It estimates how far the proposed next point
+`x_next` is from likely future regions of interest:
 
 ```text
-s_i = max(0, mu_i + beta_future * sigma_i - y_best)
+c_future = sum_i p_i * d(x_next, z_i)
 ```
 
-The future-point weights are a softmax over these scores:
+where:
+
+- `z_i` is a randomly sampled candidate future point from the search space.
+- `d(x_next, z_i)` is scaled Euclidean distance.
+- `p_i` is the probability weight assigned to future candidate `z_i`.
+
+How future candidates are generated:
+
+```python
+candidates = np.random.uniform(lower_bound, upper_bound, size=(n_candidates, d))
+```
+
+The implementation samples candidate future points uniformly from the whole
+search space. It then asks the current GP model how promising each candidate
+looks. A candidate is promising if it has a high posterior mean, high posterior
+uncertainty, or both.
+
+Future candidate score:
+
+```text
+s_i = max(0, mu(z_i) + beta_future * sigma(z_i) - y_best)
+```
+
+This is an optimistic-improvement score. It is zero for candidates whose
+optimistic GP value is still below the current best observation.
+
+Future candidate weights:
 
 ```text
 p_i = exp(s_i / tau) / sum_j exp(s_j / tau)
 ```
 
-The full future penalty can therefore be written as:
+If all future scores are essentially zero, the implementation falls back to
+uniform weights:
+
+```text
+p_i = 1 / n_candidates
+```
+
+So the full future movement penalty is:
 
 ```text
 expected_future_path_penalty
-    = (1 / max(rho, 0.05))
+    = budget_pressure
       * w_future
       * sum_i [
           exp(s_i / tau) / sum_j exp(s_j / tau)
-        ] * d(x_next, x_i)
+        ] * d(x_next, z_i)
 ```
 
 This reward keeps the original budgeted exploration terms, but adds a penalty
@@ -372,22 +424,69 @@ GP mean, high GP uncertainty, or both. The reward therefore encourages the agent
 to choose points that are useful immediately and also position the exploration
 path well for plausible future evaluations.
 
+Interpretation:
+
+- If a proposed point has high immediate improvement but leaves the agent far
+  away from other promising regions, the future penalty reduces its reward.
+- If a proposed point is moderately good and also sits near several plausible
+  future candidates, it can receive a better reward because it preserves future
+  mobility.
+- As the movement budget decreases, `budget_pressure` increases, so both
+  immediate and expected future movement become more expensive.
+- Early in the run, when `rho` is high, the reward allows more movement because
+  the agent still has budget left.
+- Late in the run, when `rho` is low, the reward becomes more conservative.
+
 Parameters:
 
 - `reward_param_explore_weight`: controls the uncertainty bonus at the selected
-  point.
-- `reward_param_path_cost_weight`: controls the immediate movement penalty.
+  point. Larger values make the agent more willing to sample uncertain regions.
+- `reward_param_path_cost_weight`: controls the immediate movement penalty from
+  the previous point to the proposed point.
 - `reward_param_future_path_cost_weight`: controls the expected future movement
-  penalty.
+  penalty. Larger values make the agent prefer points that keep it close to
+  likely future regions of interest.
 - `reward_param_future_num_candidates`: number of sampled possible future points
-  used to estimate the future movement cost.
+  used to estimate the future movement cost. The current tuning grid does not
+  vary this parameter unless it is explicitly added; the implementation default
+  is `128`.
 - `reward_param_future_optimism_weight`: the value of `beta_future`, controlling
-  how strongly GP uncertainty affects future-point attractiveness.
+  how strongly GP uncertainty affects future-point attractiveness. Larger values
+  make uncertain future candidates look more attractive.
 - `reward_param_future_softmax_temperature`: the value of `tau`; lower values
   focus the expectation on the most attractive future points, while higher
-  values spread weight more evenly across candidates.
+  values spread weight more evenly across candidates. Very low values make
+  `c_future` behave closer to distance from the single most promising sampled
+  future point.
 - `reward_param_over_budget_penalty`: controls the penalty for simulated moves
   that exceed the remaining movement budget.
+
+Current fine-tuning grid:
+
+In `src/experiments/reward_configs.py`, the current grid is:
+
+```text
+movement_budget: [5]
+reward_param_explore_weight: [3.0, 5.0]
+reward_param_path_cost_weight: [0.1]
+reward_param_future_path_cost_weight: [0.005, 0.01]
+reward_param_future_optimism_weight: [1.0, 0.5]
+reward_param_future_softmax_temperature: [1.0, 0.5, 2.0]
+reward_param_over_budget_penalty: [0.0]
+```
+
+That gives:
+
+```text
+2 * 1 * 2 * 2 * 3 * 1 = 24 reward-parameter configurations
+```
+
+For leave-one-function-out tuning with one held-out objective, each config is
+tested on four training functions, so one held-out fold has:
+
+```text
+24 configs * 4 training functions = 96 tuning jobs
+```
 
 Best use:
 
@@ -404,6 +503,12 @@ Limitations:
   future path penalty is computed under the current GP posterior and does not
   simulate the posterior update that would occur after evaluating the proposed
   next point.
+- The future candidates are randomly sampled, so the future-cost estimate has
+  Monte Carlo noise.
+- The estimate depends on the current GP model. If the GP posterior is poor,
+  the reward can prefer misleading future regions.
+- The reward estimates future travel cost, not future objective improvement
+  after retraining the GP.
 
 ## Summary Table
 

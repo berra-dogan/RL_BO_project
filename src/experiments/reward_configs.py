@@ -1,0 +1,122 @@
+"""Per-reward parameter spaces and shared helpers used by the leave-one-function-out pipeline.
+
+Edit REWARD_PARAM_SPACES below to change what each reward is tuned over.
+"""
+
+import itertools
+import json
+from pathlib import Path
+from types import SimpleNamespace
+
+from experiments.experiment_runner import BASE_SETTINGS, SEARCH_SPACE, build_sweep, score_result
+from experiments.used_budget import ensure_movement_cost_columns, read_used_budget
+
+
+REWARD_PARAM_SPACES = {
+    "earlbo": {},
+    "snake": {
+        "snake_path_cost_weight": [0.005,0.01, 0.02],
+    },
+    "log_improvement": {
+        "reward_param_scale": [1.0],
+    },
+    "normalized_improvement": {},
+    "optimistic_improvement": {
+        "reward_param_std_weight": [0.1],
+    },
+    "budgeted_exploration": {
+        "movement_budget": [5],
+        "reward_param_explore_weight": [1.0, 3.0, 5.0],
+        "reward_param_path_cost_weight": [0.05, 0.1],
+        "reward_param_over_budget_penalty": [0.0],
+    },
+    "lookahead_budgeted_exploration": {
+        "movement_budget": [5],
+        "reward_param_explore_weight": [3.0,5.0],
+        "reward_param_path_cost_weight": [0.1],
+        "reward_param_future_path_cost_weight": [0.005, 0.01],
+        "reward_param_future_optimism_weight": [1.0, 0.5],
+        "reward_param_future_softmax_temperature": [1.0, 0.5, 2.],
+        "reward_param_over_budget_penalty": [0.0],
+    },
+}
+
+REWARD_NAMES = tuple(REWARD_PARAM_SPACES)
+BUDGET_AWARE_REWARDS = {
+    "budgeted_exploration",
+    "lookahead_budgeted_exploration",
+}
+BUDGET_SCORE_MOVE_WEIGHT = 0.1
+
+
+def parameter_combinations(space):
+    if not space:
+        return [{}]
+    keys = list(space)
+    return [
+        dict(zip(keys, values))
+        for values in itertools.product(*(space[key] for key in keys))
+    ]
+
+
+def base_configs(reward):
+    if reward in BUDGET_AWARE_REWARDS:
+        return [{key: values[0] for key, values in SEARCH_SPACE.items()}]
+    return build_sweep()
+
+
+def reward_configs(reward):
+    return [
+        {**base_config, **reward_params}
+        for base_config in base_configs(reward)
+        for reward_params in parameter_combinations(REWARD_PARAM_SPACES[reward])
+    ]
+
+
+def current_reward_config(reward):
+    """Return the first/current parameter setting for a reward.
+
+    This is used by test-only workflows that intentionally skip fine-tuning
+    and evaluate the currently selected/default parameters.
+    """
+    return reward_configs(reward)[0]
+
+
+def runner_args(reward, settings=None):
+    settings = settings or {}
+    return SimpleNamespace(
+        reward_mode=reward,
+        snake_path_cost_weight=settings.get("snake_path_cost_weight"),
+        movement_budget=settings.get("movement_budget"),
+    )
+
+
+def base_settings(reward, config):
+    settings = dict(BASE_SETTINGS)
+    settings["reward_mode"] = reward
+    for key in ("movement_budget", "snake_path_cost_weight"):
+        if key in config:
+            settings[key] = config[key]
+    return settings
+
+
+def load_result(run_dir):
+    result_csvs = sorted(run_dir.glob("RL_BO_*D_*_h*.csv"))
+    if result_csvs:
+        try:
+            ensure_movement_cost_columns(result_csvs[0])
+        except Exception as exc:
+            print(f"[warn] Could not add movement costs to {result_csvs[0]}: {exc}")
+
+    result_path = run_dir / "result.json"
+    if result_path.exists():
+        return json.loads(result_path.read_text())
+    if not result_csvs:
+        return {"status": "missing"}
+    return {
+        "status": "ok",
+        **score_result(result_csvs[0]),
+        **read_used_budget(run_dir),
+        "summary_csv": str(result_csvs[0]),
+        "run_dir": str(run_dir),
+    }

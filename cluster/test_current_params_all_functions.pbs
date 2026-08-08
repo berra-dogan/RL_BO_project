@@ -1,0 +1,53 @@
+#!/bin/bash
+#PBS -N current_param_test
+#PBS -J 0-34
+#PBS -l select=1:ncpus=2:mem=8gb
+#PBS -l walltime=02:00:00
+
+set -euo pipefail
+cd "$PBS_O_WORKDIR"
+
+module purge
+module load tools/prod
+module load Python/3.11.3-GCCcore-12.3.0
+source .venv/bin/activate
+
+export OMP_NUM_THREADS=2
+export MKL_NUM_THREADS=2
+export OPENBLAS_NUM_THREADS=2
+
+source scripts/lofo_defaults.sh
+read -ra FUNCTIONS <<< "$LOFO_DEFAULT_FUNCTIONS"
+read -ra REWARDS <<< "$LOFO_DEFAULT_REWARDS"
+# #PBS -J above (0-34) must equal len(FUNCTIONS) * len(REWARDS) - 1; update
+# both together if scripts/lofo_defaults.sh changes.
+
+NUM_REWARDS="${#REWARDS[@]}"
+GLOBAL_INDEX="${PBS_ARRAY_INDEX:?PBS_ARRAY_INDEX is required}"
+FUNCTION_INDEX=$((GLOBAL_INDEX / NUM_REWARDS))
+REWARD_INDEX=$((GLOBAL_INDEX % NUM_REWARDS))
+
+if [ "$FUNCTION_INDEX" -ge "${#FUNCTIONS[@]}" ]; then
+  echo "Array index $GLOBAL_INDEX is outside the function/reward grid" >&2
+  exit 1
+fi
+
+TEST_FUNCTION="${FUNCTIONS[$FUNCTION_INDEX]}"
+REWARD="${REWARDS[$REWARD_INDEX]}"
+DIMENSION="${TEST_DIMENSION:-$LOFO_DEFAULT_DIMENSION}"
+OUTPUT_ROOT="${TEST_OUTPUT_ROOT:-../output/current_parameter_tests}"
+
+echo "array_index=$GLOBAL_INDEX"
+echo "test_function=$TEST_FUNCTION"
+echo "reward=$REWARD"
+echo "dimension=$DIMENSION"
+echo "output_root=$OUTPUT_ROOT"
+
+.venv/bin/python src/experiments/run_leave_one_function_out.py \
+  --mode test \
+  --use-current-params \
+  --test-function "$TEST_FUNCTION" \
+  --dimension "$DIMENSION" \
+  --reward "$REWARD" \
+  --output-root "$OUTPUT_ROOT" \
+  --device cpu

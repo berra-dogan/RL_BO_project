@@ -2,6 +2,7 @@ from rl_bo import RL_BO
 from utils import Scaler
 from objective_functions import ObjectiveFunctions
 from config import ExperimentConfig, GPRConfig, PPOConfig, RLBOConfig
+from experiments.used_budget import write_used_budget_summary
 from rewards import available_reward_modes
 
 import argparse
@@ -313,17 +314,57 @@ def aggregate_results(output_dir: Path, config: ExperimentConfig):
         run_rows.append(rows)
 
     regrets = np.array([[float(row["Regret"]) for row in rows] for rows in run_rows])
+    scaled_move_costs = np.array([
+        [float(row.get("Scaled Move Cost", 0.0)) for row in rows]
+        for rows in run_rows
+    ])
+    raw_move_costs = np.array([
+        [float(row.get("Raw Move Cost", 0.0)) for row in rows]
+        for rows in run_rows
+    ])
+    cumulative_scaled_move_costs = np.cumsum(scaled_move_costs, axis=1)
+    cumulative_raw_move_costs = np.cumsum(raw_move_costs, axis=1)
     avg_time = np.mean([float(rows[0]["Avg Time"]) for rows in run_rows])
     std_time = np.mean([float(rows[0]["Std Time"]) for rows in run_rows])
 
     summary_path = output_dir / f"RL_BO_{config.dimension}D_{config.test_func_name}_h{config.horizon}.csv"
+    fieldnames = [
+        "Avg Regret",
+        "Std Regret",
+        "Avg Scaled Move Cost",
+        "Std Scaled Move Cost",
+        "Avg Raw Move Cost",
+        "Std Raw Move Cost",
+        "Avg Cumulative Scaled Move Cost",
+        "Std Cumulative Scaled Move Cost",
+        "Avg Cumulative Raw Move Cost",
+        "Std Cumulative Raw Move Cost",
+        "Avg Time",
+        "Std Time",
+    ]
     with summary_path.open("w", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=["Avg Regret", "Std Regret", "Avg Time", "Std Time"])
+        writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()
-        for avg_regret, std_regret in zip(np.mean(regrets, axis=0), np.std(regrets, axis=0)):
+        for iteration in range(regrets.shape[1]):
             writer.writerow({
-                "Avg Regret": avg_regret,
-                "Std Regret": std_regret,
+                "Avg Regret": np.mean(regrets[:, iteration]),
+                "Std Regret": np.std(regrets[:, iteration]),
+                "Avg Scaled Move Cost": np.mean(scaled_move_costs[:, iteration]),
+                "Std Scaled Move Cost": np.std(scaled_move_costs[:, iteration]),
+                "Avg Raw Move Cost": np.mean(raw_move_costs[:, iteration]),
+                "Std Raw Move Cost": np.std(raw_move_costs[:, iteration]),
+                "Avg Cumulative Scaled Move Cost": np.mean(
+                    cumulative_scaled_move_costs[:, iteration]
+                ),
+                "Std Cumulative Scaled Move Cost": np.std(
+                    cumulative_scaled_move_costs[:, iteration]
+                ),
+                "Avg Cumulative Raw Move Cost": np.mean(
+                    cumulative_raw_move_costs[:, iteration]
+                ),
+                "Std Cumulative Raw Move Cost": np.std(
+                    cumulative_raw_move_costs[:, iteration]
+                ),
                 "Avg Time": avg_time,
                 "Std Time": std_time,
             })
@@ -350,6 +391,7 @@ def main():
 
     if args.aggregate_only:
         aggregate_results(output_dir, config)
+        write_used_budget_summary(output_dir, rlbo_config.movement_budget)
         return
 
     if args.run_id is not None:
@@ -374,6 +416,7 @@ def main():
 
     if args.run_id is None:
         aggregate_results(output_dir, config)
+    write_used_budget_summary(output_dir, rlbo_config.movement_budget)
 
 if __name__ == '__main__':
     main()

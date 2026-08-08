@@ -39,213 +39,83 @@ Delete a job:
 qdel '<JOB_ID>'
 ```
 
-## Standard Reward Tuning
+## Leave-One-Function-Out Tuning, Collection, And Testing
 
-Rewards:
-
-```text
-earlbo
-snake
-log_improvement
-normalized_improvement
-optimistic_improvement
-```
-
-Check total configs:
+See `cluster/README.md` for the full leave-one-function-out workflow. The
+short version, run from the cluster login node:
 
 ```bash
-.venv/bin/python src/experiments/run_reward_array.py --print-total
+bash scripts/submit_leave_one_function_out_cluster.sh
 ```
 
-Expected:
-
-```text
-44
-```
-
-Grouped tuning:
+This submits a tuning array, then a dependent collection array, then a
+dependent held-out test array, one chain per default function/reward/dimension
+set in `scripts/lofo_defaults.sh`. Override any of them with environment
+variables, e.g.:
 
 ```bash
-qsub cluster/group_submit_reward_finetune.pbs
+DIMENSIONS="2 10" REWARDS="earlbo snake" bash scripts/submit_leave_one_function_out_cluster.sh ackley levy
 ```
 
-One PBS array job per config:
+To run tuning, collection, or testing separately (e.g. to resubmit just one
+stage after a failure), use `scripts/submit_lofo_tuning_cluster.sh`,
+`scripts/submit_lofo_best_configs_cluster.sh`, and
+`scripts/submit_lofo_tests_cluster.sh`.
+
+To test the currently-defined singleton parameters (skip tuning) across every
+function/reward pair:
 
 ```bash
-qsub cluster/submit_reward_config_array.pbs
+qsub cluster/test_current_params_all_functions.pbs
 ```
 
-Collect:
+## Check Produced File Counts Match Expected
+
+Count how many `best_config.json` (tuning) and `test_config.json` (testing)
+files exist versus how many are expected, for the current
+`scripts/lofo_defaults.sh` defaults (or your overrides):
 
 ```bash
-.venv/bin/python src/experiments/run_reward_array.py \
-  --collect \
-  --output-root ../output/reward_finetune_reward_params
-```
+source scripts/lofo_defaults.sh
+DIMENSION="${DIMENSION:-$LOFO_DEFAULT_DIMENSION}"
+read -ra FUNCTIONS <<< "${FUNCTIONS:-$LOFO_DEFAULT_FUNCTIONS}"
+read -ra REWARDS <<< "${REWARDS:-$LOFO_DEFAULT_REWARDS}"
+RESULT_ROOT="output/leave_one_function_out/dimension_${DIMENSION}"
 
-Test selected best configs:
-
-```bash
-qsub cluster/submit_reward_tests.pbs
-```
-
-Output:
-
-```text
-output/reward_finetune_reward_params/
-```
-
-## Budgeted Exploration Tuning
-
-Reward:
-
-```text
-budgeted_exploration
-```
-
-Check total configs:
-
-```bash
-.venv/bin/python src/experiments/run_budgeted_exploration_tuning.py --print-total
-```
-
-Parallel tuning:
-
-```bash
-qsub cluster/submit_budgeted_exploration_param_tuning.pbs
-```
-
-With the current grid this submits 2 PBS array subjobs, one config per subjob,
-and each config runs for 20 BO evaluations.
-
-One PBS array job per config:
-
-```bash
-qsub -J 0-1 cluster/submit_budgeted_exploration_param_array.pbs
-```
-
-Collect:
-
-```bash
-.venv/bin/python src/experiments/run_budgeted_exploration_tuning.py \
-  --collect \
-  --output-root ../output/budgeted_exploration_budget_grid
-```
-
-Best config:
-
-```bash
-cat output/budgeted_exploration_budget_grid/budgeted_exploration/tuning/best_config.json
-```
-
-Output:
-
-```text
-output/budgeted_exploration_budget_grid/budgeted_exploration/
-```
-
-## Lookahead Budgeted Exploration Tuning
-
-Reward:
-
-```text
-lookahead_budgeted_exploration
-```
-
-Check total configs:
-
-```bash
-.venv/bin/python src/experiments/run_lookahead_budgeted_exploration_tuning.py --print-total
-```
-
-Expected:
-
-```text
-9
-```
-
-Grouped tuning:
-
-```bash
-qsub cluster/group_submit_lookahead_reward_finetune.pbs
-```
-
-One PBS array job per config:
-
-```bash
-qsub cluster/submit_lookahead_reward_config_array.pbs
-```
-
-Collect:
-
-```bash
-.venv/bin/python src/experiments/run_lookahead_budgeted_exploration_tuning.py \
-  --collect \
-  --output-root ../output/lookahead_budgeted_exploration_budget_grid
-```
-
-Best config:
-
-```bash
-cat output/lookahead_budgeted_exploration_budget_grid/lookahead_budgeted_exploration/tuning/best_config.json
-```
-
-Test selected best config:
-
-```bash
-qsub cluster/submit_lookahead_reward_test.pbs
-```
-
-Output:
-
-```text
-output/lookahead_budgeted_exploration_budget_grid/lookahead_budgeted_exploration/
+expected=$(( ${#FUNCTIONS[@]} * ${#REWARDS[@]} ))
+best=0
+tested=0
+for f in "${FUNCTIONS[@]}"; do
+  for r in "${REWARDS[@]}"; do
+    root="$RESULT_ROOT/held_out_${f}/${r}"
+    [ -f "$root/tuning/best_config.json" ] && best=$((best + 1))
+    [ -f "$root/test_${f}/test_config.json" ] && tested=$((tested + 1))
+  done
+done
+echo "best_configs=$best/$expected"
+echo "test_configs=$tested/$expected"
 ```
 
 ## Sync Results Back To Local
 
-Local, standard rewards:
-
 ```bash
 rsync -av \
-  bd225@login.cx3.hpc.imperial.ac.uk:~/my_implementation/output/reward_finetune_reward_params/ \
-  /Users/berra.dogan/Desktop/Imperial-Coursework/thesis/my_implementation/output/reward_finetune_reward_params/
-```
-
-Local, budgeted exploration:
-
-```bash
-rsync -av \
-  bd225@login.cx3.hpc.imperial.ac.uk:~/my_implementation/output/budgeted_exploration_budget_grid/ \
-  /Users/berra.dogan/Desktop/Imperial-Coursework/thesis/my_implementation/output/budgeted_exploration_budget_grid/
-```
-
-Local, lookahead budgeted exploration:
-
-```bash
-rsync -av \
-  bd225@login.cx3.hpc.imperial.ac.uk:~/my_implementation/output/lookahead_budgeted_exploration_budget_grid/ \
-  /Users/berra.dogan/Desktop/Imperial-Coursework/thesis/my_implementation/output/lookahead_budgeted_exploration_budget_grid/
+  bd225@login.cx3.hpc.imperial.ac.uk:~/my_implementation/output/leave_one_function_out/ \
+  /Users/berra.dogan/Desktop/Imperial-Coursework/thesis/my_implementation/output/leave_one_function_out/
 ```
 
 ## Inspect Results
 
-Show tuning table:
+Show a fold's tuning table:
 
 ```bash
-column -s, -t < output/lookahead_budgeted_exploration_budget_grid/lookahead_budgeted_exploration/tuning/tuning_results.csv | less -S
+column -s, -t < output/leave_one_function_out/dimension_2/held_out_ackley/snake/tuning/leave_one_out_results.csv | less -S
 ```
 
-Check final BO iteration in a run:
+Check a held-out test result:
 
 ```bash
-tail output/lookahead_budgeted_exploration_budget_grid/lookahead_budgeted_exploration/tuning/config_000/run_0000.csv
-```
-
-Check a config:
-
-```bash
-python -m json.tool output/lookahead_budgeted_exploration_budget_grid/lookahead_budgeted_exploration/tuning/config_000/config.json
+python -m json.tool output/leave_one_function_out/dimension_2/held_out_ackley/snake/test_ackley/test_config.json
 ```
 
 ## PBS Logs

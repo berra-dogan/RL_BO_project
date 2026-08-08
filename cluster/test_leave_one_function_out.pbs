@@ -1,0 +1,53 @@
+#!/bin/bash
+#PBS -N lofo_test
+#PBS -l select=1:ncpus=2:mem=8gb
+#PBS -l walltime=04:00:00
+
+set -euo pipefail
+cd "$PBS_O_WORKDIR"
+
+module purge
+module load tools/prod
+module load Python/3.11.3-GCCcore-12.3.0
+source .venv/bin/activate
+
+export OMP_NUM_THREADS=2
+export MKL_NUM_THREADS=2
+export OPENBLAS_NUM_THREADS=2
+
+source scripts/lofo_defaults.sh
+
+PYTHON=".venv/bin/python"
+OUTPUT_ROOT="${LOFO_OUTPUT_ROOT:-../output/leave_one_function_out}"
+IFS=: read -ra FUNCTIONS <<< "${LOFO_FUNCTIONS:-${LOFO_DEFAULT_FUNCTIONS// /:}}"
+IFS=: read -ra DIMENSIONS <<< "${LOFO_DIMENSIONS:-$LOFO_DEFAULT_DIMENSION}"
+IFS=: read -ra REWARDS <<< "${LOFO_REWARDS:-${LOFO_DEFAULT_REWARDS// /:}}"
+GLOBAL_INDEX="${PBS_ARRAY_INDEX:?PBS_ARRAY_INDEX is required}"
+
+JOBS_PER_DIMENSION=$((${#FUNCTIONS[@]} * ${#REWARDS[@]}))
+DIMENSION_INDEX=$((GLOBAL_INDEX / JOBS_PER_DIMENSION))
+WITHIN_DIMENSION_INDEX=$((GLOBAL_INDEX % JOBS_PER_DIMENSION))
+FOLD_INDEX=$((WITHIN_DIMENSION_INDEX / ${#REWARDS[@]}))
+REWARD_INDEX=$((WITHIN_DIMENSION_INDEX % ${#REWARDS[@]}))
+
+if [ "$DIMENSION_INDEX" -ge "${#DIMENSIONS[@]}" ]; then
+  echo "Global index $GLOBAL_INDEX is outside the selected dimensions" >&2
+  exit 1
+fi
+
+TEST_FUNCTION="${FUNCTIONS[$FOLD_INDEX]}"
+DIMENSION="${DIMENSIONS[$DIMENSION_INDEX]}"
+REWARD="${REWARDS[$REWARD_INDEX]}"
+
+echo "dimension=$DIMENSION"
+echo "held_out_function=$TEST_FUNCTION"
+echo "reward=$REWARD"
+
+"$PYTHON" src/experiments/run_leave_one_function_out.py \
+  --test-function "$TEST_FUNCTION" \
+  --dimension "$DIMENSION" \
+  --reward "$REWARD" \
+  --mode test \
+  --output-root "$OUTPUT_ROOT" \
+  --device cpu \
+  --skip-existing
