@@ -1,0 +1,15 @@
+{
+  "best_regret": 0.9220489920197612,
+  "final_regret": 0.9220489920197612,
+  "mean_budget_fraction_used": null,
+  "mean_remaining_movement_budget": null,
+  "mean_total_raw_move_cost": 6.768621276073778,
+  "mean_total_scaled_move_cost": 6.768621276073777,
+  "run_dir": "/rds/general/user/bd225/home/my_implementation/output/leave_one_function_out/dimension_10/held_out_sum_square/snake/tuning/config_002/ackley",
+  "score": 0.9770980334804126,
+  "status": "ok",
+  "std_total_raw_move_cost": 0.0,
+  "std_total_scaled_move_cost": 0.0,
+  "summary_csv": "/rds/general/user/bd225/home/my_implementation/output/leave_one_function_out/dimension_10/held_out_sum_square/snake/tuning/config_002/ackley/RL_BO_10D_ackley_h3.csv",
+  "used_budget_json": "/rds/general/user/bd225/home/my_implementation/output/leave_one_function_out/dimension_10/held_out_sum_square/snake/tuning/config_002/ackley/used_budget.json"
+}

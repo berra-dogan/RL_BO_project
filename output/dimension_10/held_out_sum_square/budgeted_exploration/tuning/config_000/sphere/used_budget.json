@@ -1,0 +1,18 @@
+{
+  "mean_budget_fraction_used": 0.7442533687722224,
+  "mean_remaining_movement_budget": 1.2787331561388884,
+  "mean_total_raw_move_cost": 3.7212668438611116,
+  "mean_total_scaled_move_cost": 3.7212668438611116,
+  "movement_budget": 5.0,
+  "num_runs": 1,
+  "runs": [
+    {
+      "remaining_movement_budget": 1.2787331561388884,
+      "run_id": 0,
+      "total_raw_move_cost": 3.7212668438611116,
+      "total_scaled_move_cost": 3.7212668438611116
+    }
+  ],
+  "std_total_raw_move_cost": 0.0,
+  "std_total_scaled_move_cost": 0.0
+}

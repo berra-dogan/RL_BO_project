@@ -1,0 +1,42 @@
+{
+  "held_out_function": "levy",
+  "parameter_source": "/rds/general/user/bd225/home/my_implementation/output/leave_one_function_out/dimension_5/horizon_5/held_out_levy/optimistic_improvement/tuning/best_config.json",
+  "params": {
+    "encoder_learning_rate": 0.001,
+    "gpr_alpha": 1e-08,
+    "max_episodes": 120,
+    "off_policy_episodes": 20,
+    "ppo_action_decay": 0.99,
+    "ppo_action_std": 0.05,
+    "ppo_entropy_coeff": 0.01,
+    "ppo_gamma": 0.95,
+    "ppo_learning_rate": 0.0001,
+    "reward_param_std_weight": 0.5
+  },
+  "reward": "optimistic_improvement",
+  "selected_from_config_id": 1,
+  "selection_mean_rank": 1.5,
+  "test_result": {
+    "best_regret": 0.05109763891850785,
+    "final_regret": 0.05109763891850785,
+    "mean_budget_fraction_used": null,
+    "mean_remaining_movement_budget": null,
+    "mean_total_raw_move_cost": 12.611284564890193,
+    "mean_total_scaled_move_cost": 12.611284564890191,
+    "run_dir": "/rds/general/user/bd225/home/my_implementation/output/leave_one_function_out/dimension_5/horizon_5/held_out_levy/optimistic_improvement/test_levy",
+    "score": 0.051845128897637704,
+    "status": "ok",
+    "std_total_raw_move_cost": 0.3017689030149014,
+    "std_total_scaled_move_cost": 0.3017689030149008,
+    "summary_csv": "/rds/general/user/bd225/home/my_implementation/output/leave_one_function_out/dimension_5/horizon_5/held_out_levy/optimistic_improvement/test_levy/RL_BO_5D_levy_h5.csv",
+    "used_budget_json": "/rds/general/user/bd225/home/my_implementation/output/leave_one_function_out/dimension_5/horizon_5/held_out_levy/optimistic_improvement/test_levy/used_budget.json"
+  },
+  "used_budget": {
+    "mean_budget_fraction_used": null,
+    "mean_remaining_movement_budget": null,
+    "mean_total_raw_move_cost": 12.611284564890193,
+    "mean_total_scaled_move_cost": 12.611284564890191,
+    "std_total_raw_move_cost": 0.3017689030149014,
+    "std_total_scaled_move_cost": 0.3017689030149008
+  }
+}

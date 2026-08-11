@@ -1,0 +1,15 @@
+{
+  "best_regret": 1.3195949299560452,
+  "final_regret": 1.3195949299560452,
+  "mean_budget_fraction_used": null,
+  "mean_remaining_movement_budget": null,
+  "mean_total_raw_move_cost": 6.29307824733257,
+  "mean_total_scaled_move_cost": 6.293078247332569,
+  "run_dir": "/rds/general/user/bd225/home/my_implementation/output/leave_one_function_out/dimension_3/horizon_3/held_out_sum_square/optimistic_improvement/tuning/config_002/rosenbrock",
+  "score": 1.3820249241673959,
+  "status": "ok",
+  "std_total_raw_move_cost": 0.0,
+  "std_total_scaled_move_cost": 0.0,
+  "summary_csv": "/rds/general/user/bd225/home/my_implementation/output/leave_one_function_out/dimension_3/horizon_3/held_out_sum_square/optimistic_improvement/tuning/config_002/rosenbrock/RL_BO_3D_rosenbrock_h3.csv",
+  "used_budget_json": "/rds/general/user/bd225/home/my_implementation/output/leave_one_function_out/dimension_3/horizon_3/held_out_sum_square/optimistic_improvement/tuning/config_002/rosenbrock/used_budget.json"
+}

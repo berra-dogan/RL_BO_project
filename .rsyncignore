@@ -12,11 +12,5 @@ __pycache__
 *.pyd
 *.so
 
+old
 output
-output_old
-*.csv
-*.o[0-9]*
-*.e[0-9]*
-
-EARL_BO
-batch_runs_earl_bo

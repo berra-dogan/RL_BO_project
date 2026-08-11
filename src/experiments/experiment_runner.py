@@ -51,7 +51,7 @@ SEARCH_SPACE = {
     "gpr_alpha": [1e-8],
 }
 
-TEST_BUDGET = {"num_runs": 3, "num_experiments": 100}
+TEST_BUDGET = {"num_runs": 3, "num_experiments": 50}
 
 
 def tune_budget(dimension):
@@ -72,6 +72,8 @@ def effective_base_settings(args):
     if getattr(args, "dimension", None) is not None:
         settings["dimension"] = args.dimension
     settings["num_initial_data"] = 5 * settings["dimension"]
+    if getattr(args, "horizon", None) is not None:
+        settings["horizon"] = args.horizon
     if getattr(args, "test_func", None) is not None:
         settings["test_func"] = args.test_func
     if args.snake_path_cost_weight is not None:

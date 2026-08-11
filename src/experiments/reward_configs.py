@@ -18,11 +18,11 @@ REWARD_PARAM_SPACES = {
         "snake_path_cost_weight": [0.005,0.01, 0.02],
     },
     "log_improvement": {
-        "reward_param_scale": [1.0],
+        "reward_param_scale": [0.1, 1.0, 10.0],
     },
     "normalized_improvement": {},
     "optimistic_improvement": {
-        "reward_param_std_weight": [0.1],
+        "reward_param_std_weight": [0.1, 0.5, 1.0],
     },
     "budgeted_exploration": {
         "movement_budget": [5],

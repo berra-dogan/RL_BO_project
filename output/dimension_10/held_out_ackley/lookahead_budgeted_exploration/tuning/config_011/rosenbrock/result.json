@@ -1,0 +1,15 @@
+{
+  "best_regret": 43.80238624554913,
+  "final_regret": 43.80238624554913,
+  "mean_budget_fraction_used": 0.9267333102251344,
+  "mean_remaining_movement_budget": 0.36633344887432795,
+  "mean_total_raw_move_cost": 4.633666551125672,
+  "mean_total_scaled_move_cost": 4.633666551125672,
+  "run_dir": "/rds/general/user/bd225/home/my_implementation/output/leave_one_function_out/dimension_10/held_out_ackley/lookahead_budgeted_exploration/tuning/config_011/rosenbrock",
+  "score": 61.50407613131908,
+  "status": "ok",
+  "std_total_raw_move_cost": 0.0,
+  "std_total_scaled_move_cost": 0.0,
+  "summary_csv": "/rds/general/user/bd225/home/my_implementation/output/leave_one_function_out/dimension_10/held_out_ackley/lookahead_budgeted_exploration/tuning/config_011/rosenbrock/RL_BO_10D_rosenbrock_h3.csv",
+  "used_budget_json": "/rds/general/user/bd225/home/my_implementation/output/leave_one_function_out/dimension_10/held_out_ackley/lookahead_budgeted_exploration/tuning/config_011/rosenbrock/used_budget.json"
+}

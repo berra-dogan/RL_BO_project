@@ -1,0 +1,42 @@
+{
+  "held_out_function": "rosenbrock",
+  "parameter_source": "/rds/general/user/bd225/home/my_implementation/output/leave_one_function_out/dimension_5/horizon_3/held_out_rosenbrock/log_improvement/tuning/best_config.json",
+  "params": {
+    "encoder_learning_rate": 0.001,
+    "gpr_alpha": 1e-08,
+    "max_episodes": 120,
+    "off_policy_episodes": 20,
+    "ppo_action_decay": 0.99,
+    "ppo_action_std": 0.05,
+    "ppo_entropy_coeff": 0.01,
+    "ppo_gamma": 0.95,
+    "ppo_learning_rate": 0.0001,
+    "reward_param_scale": 10.0
+  },
+  "reward": "log_improvement",
+  "selected_from_config_id": 2,
+  "selection_mean_rank": 1.5,
+  "test_result": {
+    "best_regret": 3.5491195074093405,
+    "final_regret": 3.5491195074093405,
+    "mean_budget_fraction_used": null,
+    "mean_remaining_movement_budget": null,
+    "mean_total_raw_move_cost": 16.90704610533668,
+    "mean_total_scaled_move_cost": 16.90704610533668,
+    "run_dir": "/rds/general/user/bd225/home/my_implementation/output/leave_one_function_out/dimension_5/horizon_3/held_out_rosenbrock/log_improvement/test_rosenbrock",
+    "score": 3.5491195074093405,
+    "status": "ok",
+    "std_total_raw_move_cost": 1.1515261050105152,
+    "std_total_scaled_move_cost": 1.1515261050105152,
+    "summary_csv": "/rds/general/user/bd225/home/my_implementation/output/leave_one_function_out/dimension_5/horizon_3/held_out_rosenbrock/log_improvement/test_rosenbrock/RL_BO_5D_rosenbrock_h3.csv",
+    "used_budget_json": "/rds/general/user/bd225/home/my_implementation/output/leave_one_function_out/dimension_5/horizon_3/held_out_rosenbrock/log_improvement/test_rosenbrock/used_budget.json"
+  },
+  "used_budget": {
+    "mean_budget_fraction_used": null,
+    "mean_remaining_movement_budget": null,
+    "mean_total_raw_move_cost": 16.90704610533668,
+    "mean_total_scaled_move_cost": 16.90704610533668,
+    "std_total_raw_move_cost": 1.1515261050105152,
+    "std_total_scaled_move_cost": 1.1515261050105152
+  }
+}

@@ -1,8 +1,0 @@
-{
-  "best_regret": 2.535345803583454,
-  "final_regret": 2.535345803583454,
-  "run_dir": "/Users/berra.dogan/Desktop/Imperial-Coursework/thesis/my_implementation/src/budgeted_exploration_budget_grid/budgeted_exploration/tuning/config_000",
-  "score": 2.9192131966195274,
-  "status": "ok",
-  "summary_csv": "/Users/berra.dogan/Desktop/Imperial-Coursework/thesis/my_implementation/src/budgeted_exploration_budget_grid/budgeted_exploration/tuning/config_000/RL_BO_10D_ackley_h3.csv"
-}

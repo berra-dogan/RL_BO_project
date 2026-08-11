@@ -21,24 +21,31 @@ PYTHON=".venv/bin/python"
 OUTPUT_ROOT="${LOFO_OUTPUT_ROOT:-../output/leave_one_function_out}"
 IFS=: read -ra FUNCTIONS <<< "${LOFO_FUNCTIONS:-${LOFO_DEFAULT_FUNCTIONS// /:}}"
 IFS=: read -ra DIMENSIONS <<< "${LOFO_DIMENSIONS:-$LOFO_DEFAULT_DIMENSION}"
+IFS=: read -ra HORIZONS <<< "${LOFO_HORIZONS:-${LOFO_DEFAULT_HORIZON// /:}}"
 IFS=: read -ra REWARDS <<< "${LOFO_REWARDS:-${LOFO_DEFAULT_REWARDS// /:}}"
 REWARD_ARGS=(--reward "${REWARDS[@]}")
 GLOBAL_INDEX="${PBS_ARRAY_INDEX:?PBS_ARRAY_INDEX is required}"
-DIMENSION_INDEX=$((GLOBAL_INDEX / ${#FUNCTIONS[@]}))
-FOLD_INDEX=$((GLOBAL_INDEX % ${#FUNCTIONS[@]}))
+JOBS_PER_HORIZON=${#FUNCTIONS[@]}
+JOBS_PER_DIMENSION=$((JOBS_PER_HORIZON * ${#HORIZONS[@]}))
+DIMENSION_INDEX=$((GLOBAL_INDEX / JOBS_PER_DIMENSION))
+WITHIN_DIMENSION_INDEX=$((GLOBAL_INDEX % JOBS_PER_DIMENSION))
+HORIZON_INDEX=$((WITHIN_DIMENSION_INDEX / JOBS_PER_HORIZON))
+FOLD_INDEX=$((WITHIN_DIMENSION_INDEX % JOBS_PER_HORIZON))
 
 if [ "$DIMENSION_INDEX" -ge "${#DIMENSIONS[@]}" ]; then
-  echo "Global index $GLOBAL_INDEX is outside the selected dimensions" >&2
+  echo "Global index $GLOBAL_INDEX is outside the selected dimension/horizon/function grid" >&2
   exit 1
 fi
 
 TEST_FUNCTION="${FUNCTIONS[$FOLD_INDEX]}"
 DIMENSION="${DIMENSIONS[$DIMENSION_INDEX]}"
-echo "Collecting dimension $DIMENSION, held-out function $TEST_FUNCTION"
+HORIZON="${HORIZONS[$HORIZON_INDEX]}"
+echo "Collecting dimension $DIMENSION, horizon $HORIZON, held-out function $TEST_FUNCTION"
 
 "$PYTHON" src/experiments/run_leave_one_function_out.py \
   --test-function "$TEST_FUNCTION" \
   --dimension "$DIMENSION" \
+  --horizon "$HORIZON" \
   "${REWARD_ARGS[@]}" \
   --mode collect \
   --output-root "$OUTPUT_ROOT"

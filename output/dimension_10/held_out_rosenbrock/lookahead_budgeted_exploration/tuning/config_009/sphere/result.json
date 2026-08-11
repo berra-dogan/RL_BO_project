@@ -1,0 +1,15 @@
+{
+  "best_regret": 0.08282985670311534,
+  "final_regret": 0.08282985670311534,
+  "mean_budget_fraction_used": 0.7184079549796211,
+  "mean_remaining_movement_budget": 1.4079602251018946,
+  "mean_total_raw_move_cost": 3.5920397748981046,
+  "mean_total_scaled_move_cost": 3.5920397748981054,
+  "run_dir": "/rds/general/user/bd225/home/my_implementation/output/leave_one_function_out/dimension_10/held_out_rosenbrock/lookahead_budgeted_exploration/tuning/config_009/sphere",
+  "score": 0.09307525811874842,
+  "status": "ok",
+  "std_total_raw_move_cost": 0.0,
+  "std_total_scaled_move_cost": 0.0,
+  "summary_csv": "/rds/general/user/bd225/home/my_implementation/output/leave_one_function_out/dimension_10/held_out_rosenbrock/lookahead_budgeted_exploration/tuning/config_009/sphere/RL_BO_10D_sphere_h3.csv",
+  "used_budget_json": "/rds/general/user/bd225/home/my_implementation/output/leave_one_function_out/dimension_10/held_out_rosenbrock/lookahead_budgeted_exploration/tuning/config_009/sphere/used_budget.json"
+}

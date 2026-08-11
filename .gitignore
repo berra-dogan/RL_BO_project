@@ -14,9 +14,7 @@ venv/
 .vscode/
 
 # Generated experiment outputs
-output/
-output_old/
-output_old2/
+old/
 *.csv
 *.o[0-9]*
 *.e[0-9]*

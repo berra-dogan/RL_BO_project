@@ -6,6 +6,7 @@ cd "$PROJECT_ROOT"
 source scripts/lofo_defaults.sh
 
 DIMENSION="${DIMENSION:-$LOFO_DEFAULT_DIMENSION}"
+HORIZON="${HORIZON:-$LOFO_DEFAULT_HORIZON}"
 OUTPUT_ROOT="${OUTPUT_ROOT:-../output/leave_one_function_out}"
 read -ra FUNCTIONS <<< "${FUNCTIONS:-$LOFO_DEFAULT_FUNCTIONS}"
 read -ra REWARDS <<< "${REWARDS:-$LOFO_DEFAULT_REWARDS}"
@@ -22,7 +23,7 @@ else
   exit 1
 fi
 
-RESULT_ROOT="output/leave_one_function_out/dimension_${DIMENSION}"
+RESULT_ROOT="output/leave_one_function_out/dimension_${DIMENSION}/horizon_${HORIZON}"
 if [ ! -d "$RESULT_ROOT" ]; then
   echo "Missing tuning results: $RESULT_ROOT" >&2
   echo "Sync the cluster outputs locally before running this script." >&2
@@ -30,6 +31,7 @@ if [ ! -d "$RESULT_ROOT" ]; then
 fi
 
 echo "dimension=$DIMENSION"
+echo "horizon=$HORIZON"
 echo "functions=${FUNCTIONS[*]}"
 echo "rewards=${REWARDS[*]}"
 echo "output_root=$OUTPUT_ROOT"
@@ -42,6 +44,7 @@ for function_name in "${FUNCTIONS[@]}"; do
   if ! "$PYTHON_BIN" src/experiments/run_leave_one_function_out.py \
     --test-function "$function_name" \
     --dimension "$DIMENSION" \
+    --horizon "$HORIZON" \
     --reward "${REWARDS[@]}" \
     --mode collect \
     --output-root "$OUTPUT_ROOT"; then
@@ -54,6 +57,7 @@ for function_name in "${FUNCTIONS[@]}"; do
   if ! "$PYTHON_BIN" src/experiments/run_leave_one_function_out.py \
     --test-function "$function_name" \
     --dimension "$DIMENSION" \
+    --horizon "$HORIZON" \
     --reward "${REWARDS[@]}" \
     --mode test \
     --device cpu \

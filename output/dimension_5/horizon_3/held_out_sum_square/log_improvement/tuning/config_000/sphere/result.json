@@ -1,0 +1,15 @@
+{
+  "best_regret": 0.0008122316341442896,
+  "final_regret": 0.0008122316341442896,
+  "mean_budget_fraction_used": null,
+  "mean_remaining_movement_budget": null,
+  "mean_total_raw_move_cost": 9.30438560629879,
+  "mean_total_scaled_move_cost": 9.30438560629879,
+  "run_dir": "/rds/general/user/bd225/home/my_implementation/output/leave_one_function_out/dimension_5/horizon_3/held_out_sum_square/log_improvement/tuning/config_000/sphere",
+  "score": 0.0008122316341442896,
+  "status": "ok",
+  "std_total_raw_move_cost": 0.0,
+  "std_total_scaled_move_cost": 0.0,
+  "summary_csv": "/rds/general/user/bd225/home/my_implementation/output/leave_one_function_out/dimension_5/horizon_3/held_out_sum_square/log_improvement/tuning/config_000/sphere/RL_BO_5D_sphere_h3.csv",
+  "used_budget_json": "/rds/general/user/bd225/home/my_implementation/output/leave_one_function_out/dimension_5/horizon_3/held_out_sum_square/log_improvement/tuning/config_000/sphere/used_budget.json"
+}

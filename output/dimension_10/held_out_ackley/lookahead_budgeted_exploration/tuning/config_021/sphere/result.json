@@ -1,0 +1,15 @@
+{
+  "best_regret": 0.051627213743774054,
+  "final_regret": 0.051627213743774054,
+  "mean_budget_fraction_used": 0.78994704783279,
+  "mean_remaining_movement_budget": 1.05026476083605,
+  "mean_total_raw_move_cost": 3.94973523916395,
+  "mean_total_scaled_move_cost": 3.94973523916395,
+  "run_dir": "/rds/general/user/bd225/home/my_implementation/output/leave_one_function_out/dimension_10/held_out_ackley/lookahead_budgeted_exploration/tuning/config_021/sphere",
+  "score": 0.05162721374377406,
+  "status": "ok",
+  "std_total_raw_move_cost": 0.0,
+  "std_total_scaled_move_cost": 0.0,
+  "summary_csv": "/rds/general/user/bd225/home/my_implementation/output/leave_one_function_out/dimension_10/held_out_ackley/lookahead_budgeted_exploration/tuning/config_021/sphere/RL_BO_10D_sphere_h3.csv",
+  "used_budget_json": "/rds/general/user/bd225/home/my_implementation/output/leave_one_function_out/dimension_10/held_out_ackley/lookahead_budgeted_exploration/tuning/config_021/sphere/used_budget.json"
+}

@@ -1,0 +1,15 @@
+{
+  "best_regret": 0.45969062120288884,
+  "final_regret": 0.45969062120288884,
+  "mean_budget_fraction_used": 0.7905848439031573,
+  "mean_remaining_movement_budget": 1.0470757804842132,
+  "mean_total_raw_move_cost": 3.9529242195157868,
+  "mean_total_scaled_move_cost": 3.9529242195157868,
+  "run_dir": "/rds/general/user/bd225/home/my_implementation/output/leave_one_function_out/dimension_10/held_out_sum_square/lookahead_budgeted_exploration/tuning/config_001/ackley",
+  "score": 0.45969062120288884,
+  "status": "ok",
+  "std_total_raw_move_cost": 0.0,
+  "std_total_scaled_move_cost": 0.0,
+  "summary_csv": "/rds/general/user/bd225/home/my_implementation/output/leave_one_function_out/dimension_10/held_out_sum_square/lookahead_budgeted_exploration/tuning/config_001/ackley/RL_BO_10D_ackley_h3.csv",
+  "used_budget_json": "/rds/general/user/bd225/home/my_implementation/output/leave_one_function_out/dimension_10/held_out_sum_square/lookahead_budgeted_exploration/tuning/config_001/ackley/used_budget.json"
+}

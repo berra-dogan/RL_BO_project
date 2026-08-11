@@ -67,6 +67,12 @@ def parse_args():
         help=f"Objective dimension (default: {BASE_SETTINGS['dimension']}).",
     )
     parser.add_argument(
+        "--horizon",
+        type=int,
+        default=BASE_SETTINGS["horizon"],
+        help=f"Simulated lookahead horizon (default: {BASE_SETTINGS['horizon']}).",
+    )
+    parser.add_argument(
         "--reward",
         nargs="+",
         choices=REWARD_NAMES,
@@ -108,6 +114,7 @@ def fold_root(args):
         ROOT
         / args.output_root
         / f"dimension_{args.dimension}"
+        / f"horizon_{args.horizon}"
         / f"held_out_{args.test_function}"
     ).resolve()
 
@@ -125,6 +132,7 @@ def function_runner_args(reward, function_name, settings=None):
     args = runner_args(reward, settings)
     args.test_func = function_name
     args.dimension = settings.get("dimension") if settings else None
+    args.horizon = settings.get("horizon") if settings else None
     return args
 
 
@@ -147,6 +155,7 @@ def run_tuning_job(args, job):
         "held_out_function": args.test_function,
         "params": config,
         "budget": budget,
+        "horizon": args.horizon,
     }
     run_dir.mkdir(parents=True, exist_ok=True)
 
@@ -167,7 +176,7 @@ def run_tuning_job(args, job):
         function_runner_args(
             reward,
             function_name,
-            {"dimension": args.dimension},
+            {"dimension": args.dimension, "horizon": args.horizon},
         ),
     )
     save_json(result_path, result)
@@ -180,6 +189,7 @@ def run_tuning_job(args, job):
             training_function=function_name,
             held_out_function=args.test_function,
             dimension=args.dimension,
+            horizon=args.horizon,
             status=result["status"],
             result=result,
         )
@@ -203,6 +213,7 @@ def tune(args):
                 training_function=function_name,
                 held_out_function=args.test_function,
                 dimension=args.dimension,
+                horizon=args.horizon,
                 error_type=type(exc).__name__,
                 error=str(exc),
             )
@@ -220,6 +231,7 @@ def tune(args):
                 training_function=function_name,
                 held_out_function=args.test_function,
                 dimension=args.dimension,
+                horizon=args.horizon,
                 error_type=type(exc).__name__,
                 error=str(exc),
             )
@@ -300,6 +312,7 @@ def collect_reward(args, reward):
             reward=reward,
             held_out_function=args.test_function,
             dimension=args.dimension,
+            horizon=args.horizon,
             results_csv=str(results_csv),
         )
         return None
@@ -312,6 +325,7 @@ def collect_reward(args, reward):
             reward=reward,
             held_out_function=args.test_function,
             dimension=args.dimension,
+            horizon=args.horizon,
             incomplete_configurations=incomplete_count,
             complete_configurations=len(valid_rows),
             results_csv=str(results_csv),
@@ -320,6 +334,7 @@ def collect_reward(args, reward):
     best = min(valid_rows, key=lambda row: (row["mean_rank"], row["config_id"]))
     selected_base_settings = base_settings(reward, configs[best["config_id"]])
     selected_base_settings["dimension"] = args.dimension
+    selected_base_settings["horizon"] = args.horizon
     selected_base_settings["test_func"] = args.test_function
     payload = {
         "reward": reward,
@@ -360,6 +375,7 @@ def test(args):
             params = current_reward_config(reward)
             selected_settings = base_settings(reward, params)
             selected_settings["dimension"] = args.dimension
+            selected_settings["horizon"] = args.horizon
             selected_settings["test_func"] = args.test_function
             best = {
                 "config_id": None,

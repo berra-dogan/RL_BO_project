@@ -19,9 +19,18 @@ from sklearn.gaussian_process.kernels import RBF, WhiteKernel, Matern
 
 class BOEngine:
     """Handles the execution of a single Bayesian Optimization trial."""
-    
+
     @staticmethod
-    def run_trial(seed, x_start, policy_num, config: ExperimentConfig, rlbo_config: RLBOConfig, ppo_config: PPOConfig):
+    def run_trial(
+        seed,
+        x_start,
+        policy_num,
+        config: ExperimentConfig,
+        rlbo_config: RLBOConfig,
+        ppo_config: PPOConfig,
+        iterations_to_run,
+        initial_state=None,
+    ):
         try:
             # 1. Setup
             np.random.seed(seed)
@@ -30,9 +39,21 @@ class BOEngine:
                 torch.cuda.manual_seed_all(seed)
             obj_funcs = ObjectiveFunctions(config.dimension)
             test_func = obj_funcs.functions[config.test_func_name] # Uses robust getter
-            
-            x_train, y_train = x_start, test_func.real(x_start).reshape(-1, 1)
-            
+
+            if initial_state is not None:
+                x_train = initial_state["x_train"]
+                y_train = initial_state["y_train"]
+                regrets = list(initial_state["regrets"])
+                decision_times = list(initial_state["decision_times"])
+                scaled_move_costs = list(initial_state["scaled_move_costs"])
+                raw_move_costs = list(initial_state["raw_move_costs"])
+                movement_budget_remaining = initial_state["movement_budget_remaining"]
+            else:
+                x_train, y_train = x_start, test_func.real(x_start).reshape(-1, 1)
+                regrets, decision_times = [], []
+                scaled_move_costs, raw_move_costs = [], []
+                movement_budget_remaining = rlbo_config.movement_budget
+
             # 2. Models
             gpr_config = config.gpr_config
             kernel = RBF(length_scale=gpr_config.rbf_length_scale, length_scale_bounds=gpr_config.rbf_length_scale_bounds) \
@@ -42,21 +63,18 @@ class BOEngine:
             #         + WhiteKernel(noise_level=gpr_config.wk_noise_level, noise_level_bounds=gpr_config.wk_noise_level_bounds)
 
             gpr = GaussianProcessRegressor(
-                kernel=kernel, 
+                kernel=kernel,
                 alpha=gpr_config.alpha,  # Small jitter for stability
                 n_restarts_optimizer=gpr_config.n_restarts_optimizer
             )
             x_scaler, y_scaler = Scaler(), Scaler()
             acq_func = RL_BO(rlbo_config, ppo_config=ppo_config, device=config.device)
-            
-            regrets, decision_times = [], []
-            scaled_move_costs, raw_move_costs = [], []
+
             lower_bound = np.full((1, config.dimension), config.lower_bound)
             upper_bound = np.full((1, config.dimension), config.upper_bound)
-            movement_budget_remaining = rlbo_config.movement_budget
 
             # 3. Optimization Loop
-            for _ in range(config.num_experiments):
+            for _ in range(iterations_to_run):
                 y_scaled = y_scaler.fit_transform(y_train)
                 x_scaled = x_scaler.fit_transform(x_train)
                 scaled_lower_bound = ((lower_bound - x_scaler.mu) / x_scaler.std).reshape(-1)
@@ -101,8 +119,12 @@ class BOEngine:
                 "regrets": regrets,
                 "scaled_move_costs": scaled_move_costs,
                 "raw_move_costs": raw_move_costs,
+                "decision_times": decision_times,
                 "avg_time": float(np.mean(decision_times)),
                 "std_time": float(np.std(decision_times)),
+                "x_train": x_train,
+                "y_train": y_train,
+                "movement_budget_remaining": movement_budget_remaining,
             }
 
         except Exception as e:
@@ -265,6 +287,80 @@ def make_run_start(run_id, config: ExperimentConfig):
     return rng.uniform(config.lower_bound, config.upper_bound, (config.num_initial_data, config.dimension))
 
 
+def checkpoint_paths(output_dir: Path, run_id: int):
+    npz_path = output_dir / f"checkpoint_run_{run_id:04d}.npz"
+    meta_path = output_dir / f"checkpoint_run_{run_id:04d}.json"
+    return npz_path, meta_path
+
+
+def checkpoint_fingerprint(config: ExperimentConfig, rlbo_config: RLBOConfig):
+    """Config fields that must match between the original run and a resume."""
+    return {
+        "dimension": config.dimension,
+        "test_func_name": config.test_func_name,
+        "horizon": config.horizon,
+        "lower_bound": config.lower_bound,
+        "upper_bound": config.upper_bound,
+        "num_initial_data": config.num_initial_data,
+        "reward_mode": rlbo_config.reward_mode,
+    }
+
+
+def save_checkpoint(output_dir: Path, config: ExperimentConfig, rlbo_config: RLBOConfig, result):
+    output_dir.mkdir(parents=True, exist_ok=True)
+    npz_path, meta_path = checkpoint_paths(output_dir, result["run_id"])
+    movement_budget_remaining = result.get("movement_budget_remaining")
+    np.savez(
+        npz_path,
+        x_train=result["x_train"],
+        y_train=result["y_train"],
+        regrets=np.array(result["regrets"], dtype=float),
+        scaled_move_costs=np.array(result["scaled_move_costs"], dtype=float),
+        raw_move_costs=np.array(result["raw_move_costs"], dtype=float),
+        decision_times=np.array(result["decision_times"], dtype=float),
+        movement_budget_remaining=np.array(
+            [movement_budget_remaining if movement_budget_remaining is not None else np.nan]
+        ),
+    )
+    meta_path.write_text(json.dumps({
+        "run_id": result["run_id"],
+        "iterations_completed": len(result["regrets"]),
+        "movement_budget_active": movement_budget_remaining is not None,
+        "fingerprint": checkpoint_fingerprint(config, rlbo_config),
+    }, indent=2, sort_keys=True) + "\n")
+
+
+def load_checkpoint(output_dir: Path, run_id: int, config: ExperimentConfig, rlbo_config: RLBOConfig):
+    npz_path, meta_path = checkpoint_paths(output_dir, run_id)
+    if not npz_path.exists() or not meta_path.exists():
+        return None
+
+    meta = json.loads(meta_path.read_text())
+    expected = checkpoint_fingerprint(config, rlbo_config)
+    if meta["fingerprint"] != expected:
+        raise ValueError(
+            f"Checkpoint for run {run_id} in {output_dir} was made with a different config.\n"
+            f"Checkpoint config: {meta['fingerprint']}\nRequested config: {expected}\n"
+            "Refusing to resume from a mismatched checkpoint; use a different "
+            "--output-dir or delete the stale checkpoint files."
+        )
+
+    data = np.load(npz_path)
+    movement_budget_remaining = (
+        float(data["movement_budget_remaining"][0]) if meta["movement_budget_active"] else None
+    )
+    return {
+        "x_train": data["x_train"],
+        "y_train": data["y_train"],
+        "regrets": list(data["regrets"]),
+        "scaled_move_costs": list(data["scaled_move_costs"]),
+        "raw_move_costs": list(data["raw_move_costs"]),
+        "decision_times": list(data["decision_times"]),
+        "movement_budget_remaining": movement_budget_remaining,
+        "iterations_completed": meta["iterations_completed"],
+    }
+
+
 def write_run_result(output_dir: Path, config: ExperimentConfig, result):
     output_dir.mkdir(parents=True, exist_ok=True)
     run_path = output_dir / f"run_{result['run_id']:04d}.csv"
@@ -400,13 +496,40 @@ def main():
         run_ids = list(range(config.num_runs))
 
     results = []
+    skipped = 0
     for run_id in run_ids:
-        x_start = make_run_start(run_id, config)
-        result = BOEngine.run_trial(run_id, x_start, run_id + 1, config, rlbo_config, ppo_config)
+        checkpoint = load_checkpoint(output_dir, run_id, config, rlbo_config)
+        already_completed = checkpoint["iterations_completed"] if checkpoint else 0
+
+        if already_completed >= config.num_experiments:
+            print(
+                f"Run {run_id} already has {already_completed} iterations "
+                f"(requested {config.num_experiments}); skipping."
+            )
+            skipped += 1
+            continue
+
+        if checkpoint:
+            print(f"Resuming run {run_id} from {already_completed} to {config.num_experiments} iterations.")
+            x_start = None
+        else:
+            x_start = make_run_start(run_id, config)
+
+        result = BOEngine.run_trial(
+            run_id,
+            x_start,
+            run_id + 1,
+            config,
+            rlbo_config,
+            ppo_config,
+            iterations_to_run=config.num_experiments - already_completed,
+            initial_state=checkpoint,
+        )
         if result is not None:
             results.append(result)
+            save_checkpoint(output_dir, config, rlbo_config, result)
 
-    if not results:
+    if not results and not skipped:
         print("all trials failed.")
         return
 
