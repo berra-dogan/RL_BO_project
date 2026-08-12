@@ -15,9 +15,6 @@ venv/
 
 # Generated experiment outputs
 old/
-*.csv
-*.o[0-9]*
-*.e[0-9]*
 
 # Legacy/generated directories
 EARL_BO/
