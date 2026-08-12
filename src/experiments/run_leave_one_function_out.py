@@ -25,6 +25,7 @@ from experiments.reward_configs import (
     BUDGET_SCORE_MOVE_WEIGHT,
     REWARD_NAMES,
     base_settings,
+    calibrated_movement_budget,
     current_reward_config,
     load_result,
     reward_configs,
@@ -148,6 +149,13 @@ def run_tuning_job(args, job):
     result_path = run_dir / "result.json"
     config_path = run_dir / "config.json"
     budget = tune_budget(args.dimension)
+    if reward in BUDGET_AWARE_REWARDS:
+        config = {
+            **config,
+            "movement_budget": calibrated_movement_budget(
+                function_name, args.dimension, args.horizon, budget["num_experiments"]
+            ),
+        }
     expected = {
         "reward": reward,
         "config_id": config_id,
@@ -373,6 +381,13 @@ def test(args):
         best_path = reward_root / "tuning" / "best_config.json"
         if args.use_current_params:
             params = current_reward_config(reward)
+            if reward in BUDGET_AWARE_REWARDS:
+                params = {
+                    **params,
+                    "movement_budget": calibrated_movement_budget(
+                        args.test_function, args.dimension, args.horizon, TEST_BUDGET["num_experiments"]
+                    ),
+                }
             selected_settings = base_settings(reward, params)
             selected_settings["dimension"] = args.dimension
             selected_settings["horizon"] = args.horizon
@@ -390,6 +405,16 @@ def test(args):
                 continue
             best = json.loads(best_path.read_text())
             parameter_source = str(best_path)
+            if reward in BUDGET_AWARE_REWARDS:
+                best = {
+                    **best,
+                    "params": {
+                        **best["params"],
+                        "movement_budget": calibrated_movement_budget(
+                            args.test_function, args.dimension, args.horizon, TEST_BUDGET["num_experiments"]
+                        ),
+                    },
+                }
 
         test_root = reward_root / f"test_{args.test_function}"
         result = run_one(
