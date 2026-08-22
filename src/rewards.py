@@ -45,6 +45,12 @@ def log_improvement_reward(ctx: RewardContext, params: dict[str, float]) -> floa
     return float(np.log1p(scale * ctx.improvement))
 
 
+def log_improvement_movement_cost_reward(ctx: RewardContext, params: dict[str, float]) -> float:
+    scale = params.get("scale", 1.0)
+    path_cost_weight = params.get("path_cost_weight", 0.0)
+    return float(np.log1p(scale * ctx.improvement)) - path_cost_weight * ctx.move_cost
+
+
 def normalized_improvement_reward(ctx: RewardContext, params: dict[str, float]) -> float:
     scale = max(float(np.max(ctx.upper_bound - ctx.lower_bound)), 1e-8)
     return ctx.improvement / scale
@@ -53,6 +59,15 @@ def normalized_improvement_reward(ctx: RewardContext, params: dict[str, float]) 
 def optimistic_improvement_reward(ctx: RewardContext, params: dict[str, float]) -> float:
     std_weight = params.get("std_weight", 0.1)
     return max(0.0, ctx.mean + std_weight * ctx.std - ctx.y_max)
+
+
+def optimistic_improvement_movement_cost_reward(
+    ctx: RewardContext, params: dict[str, float]
+) -> float:
+    std_weight = params.get("std_weight", 0.1)
+    path_cost_weight = params.get("path_cost_weight", 0.0)
+    optimistic_improvement = max(0.0, ctx.mean + std_weight * ctx.std - ctx.y_max)
+    return optimistic_improvement - path_cost_weight * ctx.move_cost
 
 
 def budgeted_exploration_reward(ctx: RewardContext, params: dict[str, float]) -> float:
@@ -112,8 +127,10 @@ REWARD_FUNCTIONS: dict[str, RewardFunction] = {
     "lookahead_budgeted_exploration": lookahead_budgeted_exploration_reward,
     "snake": snake_reward,
     "log_improvement": log_improvement_reward,
+    "log_improvement_movement_cost": log_improvement_movement_cost_reward,
     "normalized_improvement": normalized_improvement_reward,
     "optimistic_improvement": optimistic_improvement_reward,
+    "optimistic_improvement_movement_cost": optimistic_improvement_movement_cost_reward,
 }
 
 

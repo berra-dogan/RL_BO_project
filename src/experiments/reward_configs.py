@@ -21,9 +21,17 @@ REWARD_PARAM_SPACES = {
     "log_improvement": {
         "reward_param_scale": [0.1, 1.0, 10.0],
     },
+    "log_improvement_movement_cost": {
+        "reward_param_scale": [0.1, 1.0, 10.0],
+        "reward_param_path_cost_weight": [0.005, 0.01, 0.02],
+    },
     "normalized_improvement": {},
     "optimistic_improvement": {
         "reward_param_std_weight": [0.1, 0.5, 1.0],
+    },
+    "optimistic_improvement_movement_cost": {
+        "reward_param_std_weight": [0.1, 0.5, 1.0],
+        "reward_param_path_cost_weight": [0.005, 0.01, 0.02],
     },
     "budgeted_exploration": {
         # movement_budget is not swept here: it's computed per

@@ -13,12 +13,6 @@ venv/
 .DS_Store
 .vscode/
 
-# Generated experiment outputs
-old/
-
-# Legacy/generated directories
-EARL_BO/
-batch_runs_earl_bo/
-
-
 .claude
+
+output/

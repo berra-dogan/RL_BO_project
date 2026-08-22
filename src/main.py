@@ -1,4 +1,5 @@
 from rl_bo import RL_BO
+from pure_bo import PureBO
 from utils import Scaler
 from objective_functions import ObjectiveFunctions
 from config import ExperimentConfig, GPRConfig, PPOConfig, RLBOConfig
@@ -68,7 +69,14 @@ class BOEngine:
                 n_restarts_optimizer=gpr_config.n_restarts_optimizer
             )
             x_scaler, y_scaler = Scaler(), Scaler()
-            acq_func = RL_BO(rlbo_config, ppo_config=ppo_config, device=config.device)
+            if config.acquisition == "pure_bo":
+                acq_func = PureBO(
+                    n_restarts=config.pure_bo_restarts,
+                    xi=config.pure_bo_xi,
+                    device=config.device,
+                )
+            else:
+                acq_func = RL_BO(rlbo_config, ppo_config=ppo_config, device=config.device)
 
             lower_bound = np.full((1, config.dimension), config.lower_bound)
             upper_bound = np.full((1, config.dimension), config.upper_bound)
@@ -145,6 +153,9 @@ def parse_args():
     parser.add_argument("--lower-bound", type=float, default=None)
     parser.add_argument("--upper-bound", type=float, default=None)
     parser.add_argument("--horizon", type=int, default=None)
+    parser.add_argument("--acquisition", choices=("rl_bo", "pure_bo"), default=None)
+    parser.add_argument("--pure-bo-restarts", type=int, default=None)
+    parser.add_argument("--pure-bo-xi", type=float, default=None)
     parser.add_argument("--gpr-rbf-length-scale", type=float, default=None)
     parser.add_argument("--gpr-rbf-length-scale-bounds", nargs=2, type=float, metavar=("LOW", "HIGH"), default=None)
     parser.add_argument("--gpr-wk-noise-level", type=float, default=None)
@@ -203,6 +214,12 @@ def build_configs(args):
         config.upper_bound = args.upper_bound
     if args.horizon is not None:
         config.horizon = args.horizon
+    if args.acquisition is not None:
+        config.acquisition = args.acquisition
+    if args.pure_bo_restarts is not None:
+        config.pure_bo_restarts = args.pure_bo_restarts
+    if args.pure_bo_xi is not None:
+        config.pure_bo_xi = args.pure_bo_xi
 
     gpr_config = GPRConfig()
     if args.gpr_rbf_length_scale is not None:
@@ -303,6 +320,7 @@ def checkpoint_fingerprint(config: ExperimentConfig, rlbo_config: RLBOConfig):
         "upper_bound": config.upper_bound,
         "num_initial_data": config.num_initial_data,
         "reward_mode": rlbo_config.reward_mode,
+        "acquisition": config.acquisition,
     }
 
 
@@ -502,11 +520,32 @@ def main():
         already_completed = checkpoint["iterations_completed"] if checkpoint else 0
 
         if already_completed >= config.num_experiments:
-            print(
-                f"Run {run_id} already has {already_completed} iterations "
-                f"(requested {config.num_experiments}); skipping."
-            )
             skipped += 1
+            run_csv = output_dir / f"run_{run_id:04d}.csv"
+            if run_csv.exists():
+                print(
+                    f"Run {run_id} already has {already_completed} iterations "
+                    f"(requested {config.num_experiments}); skipping."
+                )
+                continue
+            # The checkpoint says this run is done, but its CSV is missing -
+            # e.g. the original run was killed after checkpointing but before
+            # the CSV-writing pass. Regenerate the CSV from the checkpoint
+            # instead of silently leaving it missing forever.
+            print(
+                f"Run {run_id} has a complete checkpoint but no CSV; "
+                "regenerating its CSV from the checkpoint instead of re-running."
+            )
+            n = config.num_experiments
+            decision_times = checkpoint["decision_times"][:n]
+            results.append({
+                "run_id": run_id,
+                "regrets": checkpoint["regrets"][:n],
+                "scaled_move_costs": checkpoint["scaled_move_costs"][:n],
+                "raw_move_costs": checkpoint["raw_move_costs"][:n],
+                "avg_time": float(np.mean(decision_times)) if decision_times else 0.0,
+                "std_time": float(np.std(decision_times)) if decision_times else 0.0,
+            })
             continue
 
         if checkpoint:

@@ -1,0 +1,58 @@
+#!/bin/bash
+#PBS -N pure_bo_grid
+#PBS -l select=1:ncpus=2:mem=8gb
+#PBS -l walltime=10:00:00
+
+set -euo pipefail
+cd "$PBS_O_WORKDIR"
+
+module purge
+module load tools/prod
+module load Python/3.11.3-GCCcore-12.3.0
+source .venv/bin/activate
+
+export OMP_NUM_THREADS=2
+export MKL_NUM_THREADS=2
+export OPENBLAS_NUM_THREADS=2
+
+IFS=: read -ra FUNCTIONS <<< "${PURE_BO_FUNCTIONS:?PURE_BO_FUNCTIONS is required}"
+IFS=: read -ra DIMENSIONS <<< "${PURE_BO_DIMENSIONS:?PURE_BO_DIMENSIONS is required}"
+IFS=: read -ra HORIZONS <<< "${PURE_BO_HORIZONS:?PURE_BO_HORIZONS is required}"
+OUTPUT_ROOT="${PURE_BO_OUTPUT_ROOT:-output/pure_bo_grid}"
+
+GLOBAL_INDEX="${PBS_ARRAY_INDEX:?PBS_ARRAY_INDEX is required}"
+NUM_FUNCTIONS="${#FUNCTIONS[@]}"
+NUM_HORIZONS="${#HORIZONS[@]}"
+JOBS_PER_DIMENSION=$((NUM_HORIZONS * NUM_FUNCTIONS))
+DIMENSION_INDEX=$((GLOBAL_INDEX / JOBS_PER_DIMENSION))
+WITHIN_DIMENSION_INDEX=$((GLOBAL_INDEX % JOBS_PER_DIMENSION))
+HORIZON_INDEX=$((WITHIN_DIMENSION_INDEX / NUM_FUNCTIONS))
+FUNCTION_INDEX=$((WITHIN_DIMENSION_INDEX % NUM_FUNCTIONS))
+
+if [ "$DIMENSION_INDEX" -ge "${#DIMENSIONS[@]}" ]; then
+  echo "Global index $GLOBAL_INDEX is outside the selected dimension/horizon/function grid" >&2
+  exit 1
+fi
+
+DIMENSION="${DIMENSIONS[$DIMENSION_INDEX]}"
+HORIZON="${HORIZONS[$HORIZON_INDEX]}"
+TEST_FUNCTION="${FUNCTIONS[$FUNCTION_INDEX]}"
+OUTPUT_DIR="$OUTPUT_ROOT/dimension_${DIMENSION}/horizon_${HORIZON}/${TEST_FUNCTION}"
+
+echo "dimension=$DIMENSION"
+echo "horizon=$HORIZON"
+echo "test_function=$TEST_FUNCTION"
+echo "output_dir=$OUTPUT_DIR"
+
+.venv/bin/python src/main.py \
+  --test-func "$TEST_FUNCTION" \
+  --dimension "$DIMENSION" \
+  --horizon "$HORIZON" \
+  --acquisition pure_bo \
+  --lower-bound -1 \
+  --upper-bound 1 \
+  --num-initial-data "$((5 * DIMENSION))" \
+  --num-runs 3 \
+  --num-experiments 50 \
+  --device cpu \
+  --output-dir "$OUTPUT_DIR"
