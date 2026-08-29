@@ -22,25 +22,15 @@ FUNCTIONS_CSV="$(IFS=:; echo "${FUNCTIONS[*]}")"
 DIMENSIONS_CSV="$(IFS=:; echo "${DIMENSIONS[*]}")"
 HORIZONS_CSV="$(IFS=:; echo "${HORIZONS[*]}")"
 REWARDS_CSV="$(IFS=:; echo "${REWARDS[*]}")"
-JOBS_PER_FOLD=$(
+# Tuning is fold-independent: one shared pool of (reward, config, function) runs
+# is reused by every held-out fold, so the tuning array is only
+# (dimension x horizon x tuning-jobs) with no fold axis.
+TUNING_JOBS_PER_HORIZON=$(
   "$PYTHON" src/experiments/run_leave_one_function_out.py \
-    --test-function "${FUNCTIONS[0]}" \
     "${REWARD_ARGS[@]}" \
     --print-total
 )
-for FUNCTION in "${FUNCTIONS[@]:1}"; do
-  FUNCTION_JOBS=$(
-    "$PYTHON" src/experiments/run_leave_one_function_out.py \
-      --test-function "$FUNCTION" \
-      "${REWARD_ARGS[@]}" \
-      --print-total
-  )
-  if [ "$FUNCTION_JOBS" -ne "$JOBS_PER_FOLD" ]; then
-    echo "Fold job counts differ; cannot flatten them into one PBS array." >&2
-    exit 1
-  fi
-done
-TOTAL_JOBS=$((JOBS_PER_FOLD * ${#FUNCTIONS[@]} * ${#DIMENSIONS[@]} * ${#HORIZONS[@]}))
+TOTAL_JOBS=$((TUNING_JOBS_PER_HORIZON * ${#DIMENSIONS[@]} * ${#HORIZONS[@]}))
 LAST_JOB_INDEX=$((TOTAL_JOBS - 1))
 FINAL_JOB_COUNT=$((${#FUNCTIONS[@]} * ${#DIMENSIONS[@]} * ${#HORIZONS[@]}))
 LAST_FINAL_INDEX=$((FINAL_JOB_COUNT - 1))
@@ -51,8 +41,8 @@ echo "Held-out functions: ${FUNCTIONS[*]}"
 echo "Dimensions: ${DIMENSIONS[*]}"
 echo "Horizons: ${HORIZONS[*]}"
 echo "Rewards: ${REWARDS[*]}"
-echo "Tuning jobs per fold: $JOBS_PER_FOLD"
-echo "Total tuning jobs: $TOTAL_JOBS"
+echo "Tuning jobs per dimension/horizon: $TUNING_JOBS_PER_HORIZON"
+echo "Total tuning jobs (shared pool, fold-independent): $TOTAL_JOBS"
 echo "Output root: $OUTPUT_ROOT"
 
 TUNING_JOB_ID=$(

@@ -38,8 +38,16 @@ REWARDS="earlbo snake" bash scripts/submit_leave_one_function_out_cluster.sh
 ```
 
 The submission helper creates one tuning array and a dependent collection/test
-array. Results are grouped under
-`output/leave_one_function_out/dimension_<n>/held_out_<function>/<reward>/`.
+array. Per-fold results (best config, held-out test) are grouped under
+`output/leave_one_function_out/dimension_<n>/horizon_<h>/held_out_<function>/<reward>/`.
+
+A tuning run for a given `(dimension, horizon, reward, config, training
+function)` is identical regardless of which function is held out, so the tuning
+stage writes one shared, fold-independent pool at
+`output/leave_one_function_out/dimension_<n>/horizon_<h>/_shared_tuning/<reward>/config_<id>/<function>/`
+and every fold's collection stage reads from it. This is why the tuning array is
+sized `dimensions x horizons x tuning-jobs` with no fold axis (previously each
+fold re-ran the same configs, ~4x redundant for 5 functions).
 
 To run just one stage (e.g. resubmitting after a failure), use
 `scripts/submit_lofo_tuning_cluster.sh`,

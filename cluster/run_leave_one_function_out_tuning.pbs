@@ -25,38 +25,33 @@ IFS=: read -ra HORIZONS <<< "${LOFO_HORIZONS:-${LOFO_DEFAULT_HORIZON// /:}}"
 IFS=: read -ra REWARDS <<< "${LOFO_REWARDS:-${LOFO_DEFAULT_REWARDS// /:}}"
 REWARD_ARGS=(--reward "${REWARDS[@]}")
 
-JOBS_PER_FOLD=$(
+# Tuning runs are fold-independent: one shared pool of
+# (reward, config, training function) runs is reused by every held-out fold, so
+# the array is (dimension x horizon x tuning-jobs) with no fold axis.
+JOBS_PER_HORIZON=$(
   "$PYTHON" src/experiments/run_leave_one_function_out.py \
-    --test-function "${FUNCTIONS[0]}" \
     "${REWARD_ARGS[@]}" \
     --print-total
 )
 GLOBAL_INDEX="${PBS_ARRAY_INDEX:?PBS_ARRAY_INDEX is required}"
-JOBS_PER_HORIZON=$((JOBS_PER_FOLD * ${#FUNCTIONS[@]}))
 JOBS_PER_DIMENSION=$((JOBS_PER_HORIZON * ${#HORIZONS[@]}))
 DIMENSION_INDEX=$((GLOBAL_INDEX / JOBS_PER_DIMENSION))
 WITHIN_DIMENSION_INDEX=$((GLOBAL_INDEX % JOBS_PER_DIMENSION))
 HORIZON_INDEX=$((WITHIN_DIMENSION_INDEX / JOBS_PER_HORIZON))
-WITHIN_HORIZON_INDEX=$((WITHIN_DIMENSION_INDEX % JOBS_PER_HORIZON))
-FOLD_INDEX=$((WITHIN_HORIZON_INDEX / JOBS_PER_FOLD))
-LOCAL_INDEX=$((WITHIN_HORIZON_INDEX % JOBS_PER_FOLD))
+LOCAL_INDEX=$((WITHIN_DIMENSION_INDEX % JOBS_PER_HORIZON))
 
 if [ "$DIMENSION_INDEX" -ge "${#DIMENSIONS[@]}" ]; then
-  echo "Global index $GLOBAL_INDEX is outside the selected dimension/horizon/function grid" >&2
+  echo "Global index $GLOBAL_INDEX is outside the selected dimension/horizon grid" >&2
   exit 1
 fi
 
-TEST_FUNCTION="${FUNCTIONS[$FOLD_INDEX]}"
 DIMENSION="${DIMENSIONS[$DIMENSION_INDEX]}"
 HORIZON="${HORIZONS[$HORIZON_INDEX]}"
 echo "dimension=$DIMENSION"
 echo "horizon=$HORIZON"
-echo "held_out_function=$TEST_FUNCTION"
-echo "fold_index=$FOLD_INDEX"
-echo "local_tuning_index=$LOCAL_INDEX"
+echo "tuning_index=$LOCAL_INDEX"
 
 "$PYTHON" src/experiments/run_leave_one_function_out.py \
-  --test-function "$TEST_FUNCTION" \
   --dimension "$DIMENSION" \
   --horizon "$HORIZON" \
   "${REWARD_ARGS[@]}" \

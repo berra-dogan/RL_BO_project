@@ -17,13 +17,14 @@ else
 fi
 
 REWARD_ARGS=(--reward "${REWARDS[@]}")
-JOBS_PER_FOLD=$(
+# Tuning is fold-independent: one shared pool of (reward, config, function) runs,
+# so the array size does not multiply by the number of held-out folds.
+JOBS_PER_HORIZON=$(
   "$PYTHON" src/experiments/run_leave_one_function_out.py \
-    --test-function "${FUNCTIONS[0]}" \
     "${REWARD_ARGS[@]}" \
     --print-total
 )
-TOTAL_JOBS=$((JOBS_PER_FOLD * ${#FUNCTIONS[@]} * ${#DIMENSIONS[@]} * ${#HORIZONS[@]}))
+TOTAL_JOBS=$((JOBS_PER_HORIZON * ${#DIMENSIONS[@]} * ${#HORIZONS[@]}))
 LAST_INDEX=$((TOTAL_JOBS - 1))
 FUNCTIONS_CSV="$(IFS=:; echo "${FUNCTIONS[*]}")"
 DIMENSIONS_CSV="$(IFS=:; echo "${DIMENSIONS[*]}")"

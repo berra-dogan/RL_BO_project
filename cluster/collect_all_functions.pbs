@@ -1,0 +1,50 @@
+#!/bin/bash
+#PBS -N collect_all_functions
+#PBS -l select=1:ncpus=2:mem=8gb
+#PBS -l walltime=00:30:00
+
+# Select, per (dimension, horizon, reward), the reward config that ranks best
+# averaged over ALL five benchmark functions, reusing the per-function tuning
+# results already produced by the leave-one-function-out pipeline. Pure
+# aggregation of existing result.json / summary CSV files -- no experiments run
+# -- so the whole dimension x horizon x reward grid fits in one short job
+# instead of an array.
+#
+# Prefer scripts/submit_collect_all_functions_cluster.sh, which sets these for
+# you. To qsub directly, override via `-v` (space- or colon-separated lists):
+#   LOFO_DIMENSIONS, LOFO_HORIZONS, LOFO_REWARDS, LOFO_INPUT_ROOT, LOFO_OUTPUT_ROOT
+
+set -euo pipefail
+cd "$PBS_O_WORKDIR"
+
+module purge
+module load tools/prod
+module load Python/3.11.3-GCCcore-12.3.0
+source .venv/bin/activate
+
+export OMP_NUM_THREADS=2
+export MKL_NUM_THREADS=2
+export OPENBLAS_NUM_THREADS=2
+
+source scripts/lofo_defaults.sh
+
+PYTHON=".venv/bin/python"
+INPUT_ROOT="${LOFO_INPUT_ROOT:-../output/leave_one_function_out}"
+OUTPUT_ROOT="${LOFO_OUTPUT_ROOT:-../output/leave_one_function_out}"
+DEFAULT_REWARDS="snake log_improvement optimistic_improvement budgeted_exploration lookahead_budgeted_exploration"
+IFS=': ' read -ra DIMENSIONS <<< "${LOFO_DIMENSIONS:-$LOFO_DEFAULT_DIMENSION}"
+IFS=': ' read -ra HORIZONS   <<< "${LOFO_HORIZONS:-$LOFO_DEFAULT_HORIZON}"
+IFS=': ' read -ra REWARDS    <<< "${LOFO_REWARDS:-$DEFAULT_REWARDS}"
+
+echo "dimensions=${DIMENSIONS[*]}"
+echo "horizons=${HORIZONS[*]}"
+echo "rewards=${REWARDS[*]}"
+echo "input_root=$INPUT_ROOT"
+echo "output_root=$OUTPUT_ROOT"
+
+"$PYTHON" src/experiments/collect_all_functions.py \
+  --dimensions "${DIMENSIONS[@]}" \
+  --horizons "${HORIZONS[@]}" \
+  --rewards "${REWARDS[@]}" \
+  --input-root "$INPUT_ROOT" \
+  --output-root "$OUTPUT_ROOT"

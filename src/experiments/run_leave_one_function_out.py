@@ -35,10 +35,16 @@ from experiments.reward_configs import (
 
 FUNCTION_NAMES = ("ackley", "sphere", "sum_square", "levy", "rosenbrock")
 
+# Harder functions that are never tuned on / selected over. They are only valid
+# as `--test-function` for `--mode test --all-functions`, i.e. evaluating the
+# "trained on all 5 fundamental functions" config on a genuinely unseen target.
+EXTRA_EVAL_FUNCTIONS = ("rastrigin", "schwefel", "michalewicz")
+ALL_EVAL_FUNCTIONS = FUNCTION_NAMES + EXTRA_EVAL_FUNCTIONS
 
-def append_warning(args, message, **context):
+
+def append_warning(root, message, **context):
     """Append a machine-readable warning without racing parallel array jobs."""
-    warning_path = fold_root(args) / "warnings.jsonl"
+    warning_path = Path(root) / "warnings.jsonl"
     warning_path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "timestamp_utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
@@ -60,7 +66,27 @@ def parse_args():
             "then evaluate on that held-out function."
         )
     )
-    parser.add_argument("--test-function", required=True, choices=FUNCTION_NAMES)
+    parser.add_argument(
+        "--test-function",
+        default=None,
+        choices=ALL_EVAL_FUNCTIONS,
+        help=(
+            "Held-out function. Required for --mode collect/test/all; ignored by "
+            "--mode tune, which writes to the fold-independent shared pool. The "
+            f"harder targets {EXTRA_EVAL_FUNCTIONS} are only valid with "
+            "--mode test --all-functions."
+        ),
+    )
+    parser.add_argument(
+        "--tuning-functions",
+        nargs="+",
+        choices=FUNCTION_NAMES,
+        default=None,
+        help=(
+            "Restrict --mode tune to these training functions. Defaults to every "
+            "function, so the shared tuning pool is reusable by all folds."
+        ),
+    )
     parser.add_argument(
         "--dimension",
         type=int,
@@ -103,6 +129,16 @@ def parse_args():
             "instead of loading a collected best_config.json."
         ),
     )
+    parser.add_argument(
+        "--all-functions",
+        action="store_true",
+        help=(
+            "Test mode only: evaluate the config selected across ALL functions "
+            "(all_functions/<reward>/tuning/best_config.json, written by "
+            "collect_all_functions.py) instead of the held-out fold's config. "
+            "--test-function is then simply the function to evaluate on."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -110,22 +146,46 @@ def training_functions(test_function):
     return [name for name in FUNCTION_NAMES if name != test_function]
 
 
-def fold_root(args):
+def dimension_horizon_root(args):
     return (
         ROOT
         / args.output_root
         / f"dimension_{args.dimension}"
         / f"horizon_{args.horizon}"
-        / f"held_out_{args.test_function}"
     ).resolve()
 
 
-def build_jobs(rewards, test_function):
+def fold_root(args):
+    return (dimension_horizon_root(args) / f"held_out_{args.test_function}").resolve()
+
+
+def shared_tuning_root(args):
+    """Fold-independent directory for raw per-(reward, config, function) tuning runs.
+
+    A tuning run for a given (dimension, horizon, reward, config_id, function) is
+    identical no matter which function is held out, so every fold reads from this
+    one pool instead of recomputing it.
+    """
+    return (dimension_horizon_root(args) / "_shared_tuning").resolve()
+
+
+def resolve_tuning_functions(args):
+    if args.tuning_functions:
+        selected = set(args.tuning_functions)
+        return [name for name in FUNCTION_NAMES if name in selected]
+    # `--mode all` tunes+collects+tests one fold in a single process; there is no
+    # shared pool to keep warm, so only tune that fold's training functions.
+    if args.mode == "all" and args.test_function is not None:
+        return training_functions(args.test_function)
+    return list(FUNCTION_NAMES)
+
+
+def build_tuning_jobs(rewards, functions):
     return [
         (reward, config_id, config, function_name)
         for reward in rewards
         for config_id, config in enumerate(reward_configs(reward))
-        for function_name in training_functions(test_function)
+        for function_name in functions
     ]
 
 
@@ -140,9 +200,8 @@ def function_runner_args(reward, function_name, settings=None):
 def run_tuning_job(args, job):
     reward, config_id, config, function_name = job
     run_dir = (
-        fold_root(args)
+        shared_tuning_root(args)
         / reward
-        / "tuning"
         / f"config_{config_id:03d}"
         / function_name
     )
@@ -160,7 +219,6 @@ def run_tuning_job(args, job):
         "reward": reward,
         "config_id": config_id,
         "training_function": function_name,
-        "held_out_function": args.test_function,
         "params": config,
         "budget": budget,
         "horizon": args.horizon,
@@ -190,12 +248,11 @@ def run_tuning_job(args, job):
     save_json(result_path, result)
     if result["status"] not in ("ok", "skipped"):
         append_warning(
-            args,
+            shared_tuning_root(args),
             "Tuning job did not complete successfully",
             reward=reward,
             config_id=config_id,
             training_function=function_name,
-            held_out_function=args.test_function,
             dimension=args.dimension,
             horizon=args.horizon,
             status=result["status"],
@@ -204,40 +261,24 @@ def run_tuning_job(args, job):
 
 
 def tune(args):
-    jobs = build_jobs(args.reward, args.test_function)
+    jobs = build_tuning_jobs(args.reward, resolve_tuning_functions(args))
     if args.index is not None:
         if args.index < 0 or args.index >= len(jobs):
             raise IndexError(f"Index {args.index} outside valid range 0-{len(jobs) - 1}")
-        job = jobs[args.index]
+        selected_jobs = [jobs[args.index]]
+    else:
+        selected_jobs = jobs
+    for job in selected_jobs:
         try:
             run_tuning_job(args, job)
         except Exception as exc:
             reward, config_id, _, function_name = job
             append_warning(
-                args,
+                shared_tuning_root(args),
                 "Unhandled tuning-job exception",
                 reward=reward,
                 config_id=config_id,
                 training_function=function_name,
-                held_out_function=args.test_function,
-                dimension=args.dimension,
-                horizon=args.horizon,
-                error_type=type(exc).__name__,
-                error=str(exc),
-            )
-        return
-    for job in jobs:
-        try:
-            run_tuning_job(args, job)
-        except Exception as exc:
-            reward, config_id, _, function_name = job
-            append_warning(
-                args,
-                "Unhandled tuning-job exception",
-                reward=reward,
-                config_id=config_id,
-                training_function=function_name,
-                held_out_function=args.test_function,
                 dimension=args.dimension,
                 horizon=args.horizon,
                 error_type=type(exc).__name__,
@@ -291,9 +332,8 @@ def collect_reward(args, reward):
         scores = []
         for config_id, row in enumerate(rows):
             run_dir = (
-                fold_root(args)
+                shared_tuning_root(args)
                 / reward
-                / "tuning"
                 / f"config_{config_id:03d}"
                 / function_name
             )
@@ -326,7 +366,7 @@ def collect_reward(args, reward):
     valid_rows = [row for row in rows if row["mean_rank"] is not None]
     if not valid_rows:
         append_warning(
-            args,
+            fold_root(args),
             "No complete configuration was available during collection",
             reward=reward,
             held_out_function=args.test_function,
@@ -339,7 +379,7 @@ def collect_reward(args, reward):
     incomplete_count = len(rows) - len(valid_rows)
     if incomplete_count:
         append_warning(
-            args,
+            fold_root(args),
             "Collection excluded incomplete configurations",
             reward=reward,
             held_out_function=args.test_function,
@@ -387,8 +427,12 @@ def collect(args):
 
 def test(args):
     failures = []
+    selection = "all_functions" if args.all_functions else "leave_one_function_out"
     for reward in args.reward:
-        reward_root = fold_root(args) / reward
+        if args.all_functions:
+            reward_root = dimension_horizon_root(args) / "all_functions" / reward
+        else:
+            reward_root = fold_root(args) / reward
         best_path = reward_root / "tuning" / "best_config.json"
         if args.use_current_params:
             params = current_reward_config(reward)
@@ -442,6 +486,8 @@ def test(args):
         )
         payload = {
             "reward": reward,
+            "selection": selection,
+            "evaluated_on": args.test_function,
             "held_out_function": args.test_function,
             "parameter_source": parameter_source,
             "selected_from_config_id": best["config_id"],
@@ -465,12 +511,26 @@ def test(args):
 
 def main():
     args = parse_args()
-    jobs = build_jobs(args.reward, args.test_function)
     if args.print_total:
-        print(len(jobs))
+        print(len(build_tuning_jobs(args.reward, resolve_tuning_functions(args))))
         return
     if args.index is not None and args.mode != "tune":
         raise ValueError("--index can only be used with --mode tune")
+    if args.mode in ("collect", "test", "all") and args.test_function is None:
+        raise ValueError("--test-function is required for --mode collect/test/all")
+    if args.all_functions:
+        if args.mode != "test":
+            raise ValueError("--all-functions can only be used with --mode test")
+        if args.use_current_params:
+            raise ValueError("--all-functions is incompatible with --use-current-params")
+    if args.test_function in EXTRA_EVAL_FUNCTIONS and not (
+        args.mode == "test" and args.all_functions
+    ):
+        raise ValueError(
+            f"{args.test_function!r} is never tuned on; it is only valid with "
+            "--mode test --all-functions (evaluate the all-functions config on an "
+            "unseen complex function)."
+        )
     if args.mode in ("tune", "all"):
         tune(args)
     if args.mode in ("collect", "all"):

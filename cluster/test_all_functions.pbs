@@ -1,0 +1,74 @@
+#!/bin/bash
+#PBS -N af_test
+#PBS -l select=1:ncpus=2:mem=8gb
+#PBS -l walltime=30:00:00
+
+# Evaluate the "trained on all 5 functions" config (written by
+# collect_all_functions.py to all_functions/<reward>/tuning/best_config.json) on
+# each benchmark function. One array element per
+# (dimension, horizon, function, reward). Writes
+# all_functions/<reward>/test_<function>/test_config.json.
+#
+# Prefer scripts/submit_all_functions_tests_cluster.sh, which sets the env vars
+# and -J range for you. To qsub directly, pass via `-v` (colon- or
+# space-separated): LOFO_FUNCTIONS, LOFO_DIMENSIONS, LOFO_HORIZONS, LOFO_REWARDS,
+# LOFO_OUTPUT_ROOT, and -J 0-N with
+# N = len(FUNCTIONS)*len(REWARDS)*len(DIMENSIONS)*len(HORIZONS) - 1.
+
+set -euo pipefail
+cd "$PBS_O_WORKDIR"
+
+module purge
+module load tools/prod
+module load Python/3.11.3-GCCcore-12.3.0
+source .venv/bin/activate
+
+export OMP_NUM_THREADS=2
+export MKL_NUM_THREADS=2
+export OPENBLAS_NUM_THREADS=2
+
+source scripts/lofo_defaults.sh
+
+PYTHON=".venv/bin/python"
+OUTPUT_ROOT="${LOFO_OUTPUT_ROOT:-../output/leave_one_function_out}"
+DEFAULT_REWARDS="snake log_improvement optimistic_improvement budgeted_exploration lookahead_budgeted_exploration"
+IFS=': ' read -ra FUNCTIONS   <<< "${LOFO_FUNCTIONS:-$LOFO_DEFAULT_FUNCTIONS}"
+IFS=': ' read -ra DIMENSIONS  <<< "${LOFO_DIMENSIONS:-$LOFO_DEFAULT_DIMENSION}"
+IFS=': ' read -ra HORIZONS    <<< "${LOFO_HORIZONS:-$LOFO_DEFAULT_HORIZON}"
+IFS=': ' read -ra REWARDS     <<< "${LOFO_REWARDS:-$DEFAULT_REWARDS}"
+GLOBAL_INDEX="${PBS_ARRAY_INDEX:?PBS_ARRAY_INDEX is required}"
+
+JOBS_PER_HORIZON=$((${#FUNCTIONS[@]} * ${#REWARDS[@]}))
+JOBS_PER_DIMENSION=$((JOBS_PER_HORIZON * ${#HORIZONS[@]}))
+DIMENSION_INDEX=$((GLOBAL_INDEX / JOBS_PER_DIMENSION))
+WITHIN_DIMENSION_INDEX=$((GLOBAL_INDEX % JOBS_PER_DIMENSION))
+HORIZON_INDEX=$((WITHIN_DIMENSION_INDEX / JOBS_PER_HORIZON))
+WITHIN_HORIZON_INDEX=$((WITHIN_DIMENSION_INDEX % JOBS_PER_HORIZON))
+FOLD_INDEX=$((WITHIN_HORIZON_INDEX / ${#REWARDS[@]}))
+REWARD_INDEX=$((WITHIN_HORIZON_INDEX % ${#REWARDS[@]}))
+
+if [ "$DIMENSION_INDEX" -ge "${#DIMENSIONS[@]}" ]; then
+  echo "Global index $GLOBAL_INDEX is outside the selected dimension/horizon/function/reward grid" >&2
+  exit 1
+fi
+
+TEST_FUNCTION="${FUNCTIONS[$FOLD_INDEX]}"
+DIMENSION="${DIMENSIONS[$DIMENSION_INDEX]}"
+HORIZON="${HORIZONS[$HORIZON_INDEX]}"
+REWARD="${REWARDS[$REWARD_INDEX]}"
+
+echo "dimension=$DIMENSION"
+echo "horizon=$HORIZON"
+echo "evaluated_on=$TEST_FUNCTION"
+echo "reward=$REWARD"
+
+"$PYTHON" src/experiments/run_leave_one_function_out.py \
+  --test-function "$TEST_FUNCTION" \
+  --dimension "$DIMENSION" \
+  --horizon "$HORIZON" \
+  --reward "$REWARD" \
+  --mode test \
+  --all-functions \
+  --output-root "$OUTPUT_ROOT" \
+  --device cpu \
+  --skip-existing
