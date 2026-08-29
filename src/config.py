@@ -87,5 +87,5 @@ class ExperimentConfig:
     horizon: int = 3
     gpr_config: GPRConfig = field(default_factory=GPRConfig) # A new config is created each time a new Experiment config is created
     acquisition: str = "rl_bo"  # "rl_bo" or "pure_bo"
-    pure_bo_restarts: int = 10
+    pure_bo_restarts: int | None = None  # None -> 5 * dimension, matching num_initial_data's convention
     pure_bo_xi: float = 0.01

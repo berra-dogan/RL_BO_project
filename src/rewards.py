@@ -70,6 +70,72 @@ def optimistic_improvement_movement_cost_reward(
     return optimistic_improvement - path_cost_weight * ctx.move_cost
 
 
+def _normalized_move_cost(ctx: RewardContext) -> float:
+    """ctx.move_cost is an L2 distance in per-dimension range-normalized action
+    units, so it lives in [0, sqrt(dim)]. Divide by sqrt(dim) to get a value in
+    [0, 1] that is comparable across dimensions and to an O(1) reward term."""
+    dim = max(int(np.asarray(ctx.action).size), 1)
+    return float(ctx.move_cost) / float(np.sqrt(dim))
+
+
+def optimistic_improvement_movement_cost2_reward(
+    ctx: RewardContext, params: dict[str, float]
+) -> float:
+    """Like optimistic_improvement_movement_cost, but the penalty is (a)
+    normalized to [0, 1] via _normalized_move_cost and (b) scaled by the size of
+    the improvement term so it stays a *relative* trade-off instead of an
+    absolute subtraction that vanishes once the improvement signal is small."""
+    std_weight = params.get("std_weight", 0.1)
+    path_cost_weight = params.get("path_cost_weight", 0.0)
+    optimistic_improvement = max(0.0, ctx.mean + std_weight * ctx.std - ctx.y_max)
+    penalty = (
+        path_cost_weight
+        * _normalized_move_cost(ctx)
+        * max(optimistic_improvement, 1.0)
+    )
+    return optimistic_improvement - penalty
+
+
+def log_improvement_movement_cost2_reward(
+    ctx: RewardContext, params: dict[str, float]
+) -> float:
+    """Like log_improvement_movement_cost, but with the normalized, relative
+    movement penalty from optimistic_improvement_movement_cost2_reward."""
+    scale = params.get("scale", 1.0)
+    path_cost_weight = params.get("path_cost_weight", 0.0)
+    base = float(np.log1p(scale * ctx.improvement))
+    penalty = path_cost_weight * _normalized_move_cost(ctx) * max(base, 1.0)
+    return base - penalty
+
+
+def optimistic_improvement_movement_cost3_reward(
+    ctx: RewardContext, params: dict[str, float]
+) -> float:
+    """Copy of optimistic_improvement_movement_cost2_reward, kept as a separate
+    reward mode so its penalty shaping can be varied independently."""
+    std_weight = params.get("std_weight", 0.1)
+    path_cost_weight = params.get("path_cost_weight", 0.0)
+    optimistic_improvement = max(0.0, ctx.mean + std_weight * ctx.std - ctx.y_max)
+    penalty = (
+        path_cost_weight
+        * _normalized_move_cost(ctx)
+        * max(optimistic_improvement, 1.0)
+    )
+    return optimistic_improvement - penalty
+
+
+def log_improvement_movement_cost3_reward(
+    ctx: RewardContext, params: dict[str, float]
+) -> float:
+    """Copy of log_improvement_movement_cost2_reward, kept as a separate reward
+    mode so its penalty shaping can be varied independently."""
+    scale = params.get("scale", 1.0)
+    path_cost_weight = params.get("path_cost_weight", 0.0)
+    base = float(np.log1p(scale * ctx.improvement))
+    penalty = path_cost_weight * _normalized_move_cost(ctx) * max(base, 1.0)
+    return base - penalty
+
+
 def budgeted_exploration_reward(ctx: RewardContext, params: dict[str, float]) -> float:
     explore_weight = params.get("explore_weight", 1.0)
     path_cost_weight = params.get("path_cost_weight", 0.05)
@@ -128,9 +194,13 @@ REWARD_FUNCTIONS: dict[str, RewardFunction] = {
     "snake": snake_reward,
     "log_improvement": log_improvement_reward,
     "log_improvement_movement_cost": log_improvement_movement_cost_reward,
+    "log_improvement_movement_cost2": log_improvement_movement_cost2_reward,
+    "log_improvement_movement_cost3": log_improvement_movement_cost3_reward,
     "normalized_improvement": normalized_improvement_reward,
     "optimistic_improvement": optimistic_improvement_reward,
     "optimistic_improvement_movement_cost": optimistic_improvement_movement_cost_reward,
+    "optimistic_improvement_movement_cost2": optimistic_improvement_movement_cost2_reward,
+    "optimistic_improvement_movement_cost3": optimistic_improvement_movement_cost3_reward,
 }
 
 

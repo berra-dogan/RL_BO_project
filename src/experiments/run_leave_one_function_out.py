@@ -261,8 +261,19 @@ def average_ranks(values):
     return [ranks[index] for index in range(len(values))]
 
 
+# Rewards whose config selection should trade off held-out regret against
+# realized movement cost (lower is better for both terms). Without this, tuning
+# picks purely on regret and path_cost_weight is effectively a free parameter.
+MOVEMENT_SCORED_REWARDS = BUDGET_AWARE_REWARDS | {
+    "log_improvement_movement_cost2",
+    "optimistic_improvement_movement_cost2",
+    "log_improvement_movement_cost3",
+    "optimistic_improvement_movement_cost3",
+}
+
+
 def selection_score(reward, result):
-    if reward not in BUDGET_AWARE_REWARDS:
+    if reward not in MOVEMENT_SCORED_REWARDS:
         return result["score"]
     move_cost = result.get("mean_total_scaled_move_cost")
     return result["score"] + (

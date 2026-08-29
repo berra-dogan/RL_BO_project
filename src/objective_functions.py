@@ -7,7 +7,10 @@ class ObjectiveFunctions:
             'sphere': Sphere(dimension),
             'sum_square': Sum_square(dimension),
             'levy': Levy(dimension),
-            'rosenbrock': Rosenbrock(dimension)
+            'rosenbrock': Rosenbrock(dimension),
+            'rastrigin': Rastrigin(dimension),
+            'schwefel': Schwefel(dimension),
+            'michalewicz': Michalewicz(dimension),
         }
 
     def evaluate(self, name, x):
@@ -60,4 +63,35 @@ class Rosenbrock:
     def real(self, x):
         sum_terms = 100 * (x[:, 1:] - x[:, :-1]**2)**2 + (x[:, :-1] - 1)**2
         return -(np.sum(sum_terms, axis=1))
+
+class Rastrigin:
+    def __init__(self, dimension):
+        self.dimension = dimension
+
+    def real(self, x):
+        rastrigin = 10 * self.dimension + np.sum(x**2 - 10 * np.cos(2 * np.pi * x), axis=1)
+        return -rastrigin
+
+class Schwefel:
+    """Standard global optimum sits near x_i=420.9687, far outside this
+    codebase's default [-2, 2]-scale search bounds -- calibrate bounds/budget
+    before using this in real experiments."""
+    def __init__(self, dimension):
+        self.dimension = dimension
+
+    def real(self, x):
+        schwefel = 418.9829 * self.dimension - np.sum(x * np.sin(np.sqrt(np.abs(x))), axis=1)
+        return -schwefel
+
+class Michalewicz:
+    """Standard domain is [0, pi] per dimension, unlike this codebase's
+    default symmetric [-2, 2]-scale search bounds -- calibrate bounds/budget
+    before using this in real experiments."""
+    def __init__(self, dimension, m=10):
+        self.dimension = dimension
+        self.m = m
+
+    def real(self, x):
+        i = np.arange(1, self.dimension + 1)
+        return np.sum(np.sin(x) * np.sin(i * x**2 / np.pi) ** (2 * self.m), axis=1)
 

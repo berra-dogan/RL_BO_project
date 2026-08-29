@@ -7,4 +7,4 @@
 LOFO_DEFAULT_DIMENSION="3 5 10"
 LOFO_DEFAULT_HORIZON="3 5"
 LOFO_DEFAULT_FUNCTIONS="ackley sphere sum_square levy rosenbrock"
-LOFO_DEFAULT_REWARDS="earlbo snake log_improvement normalized_improvement optimistic_improvement budgeted_exploration lookahead_budgeted_exploration"
+LOFO_DEFAULT_REWARDS="earlbo snake log_improvement log_improvement_movement_cost log_improvement_movement_cost2 optimistic_improvement optimistic_improvement_movement_cost optimistic_improvement_movement_cost2 budgeted_exploration lookahead_budgeted_exploration"

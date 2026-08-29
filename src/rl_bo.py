@@ -8,6 +8,20 @@ from rl_agents import PPO_Agent
 from torch.distributions import MultivariateNormal
 from config import PPOConfig, RLBOConfig
 
+# Rewards that internally account for movement cost. For these we keep using the
+# learned policy's action even when the running episode reward stays near zero,
+# instead of falling back to env.turbo_acquisition() (which is movement-blind and
+# would erase any movement-cost shaping on easy / already-converged problems).
+MOVEMENT_AWARE_REWARDS = {
+    "budgeted_exploration",
+    "lookahead_budgeted_exploration",
+    "log_improvement_movement_cost2",
+    "optimistic_improvement_movement_cost2",
+    "log_improvement_movement_cost3",
+    "optimistic_improvement_movement_cost3",
+}
+
+
 class RL_BO():
     def __init__(self, config: RLBOConfig, ppo_config: PPOConfig | None = None, device = "cpu"):
 
@@ -137,12 +151,8 @@ class RL_BO():
                     no_improvement_count = 0
 
                 # If no improvement for 15 consecutive times, terminate and use turbo acquisition
-                budget_aware_rewards = {
-                    "budgeted_exploration",
-                    "lookahead_budgeted_exploration",
-                }
                 if (
-                    self.config.reward_mode not in budget_aware_rewards
+                    self.config.reward_mode not in MOVEMENT_AWARE_REWARDS
                     and no_improvement_count >= self.config.no_improvement_threshold
                 ):
                     print(
@@ -154,11 +164,7 @@ class RL_BO():
                     final_average_score = score
 
         # Choose final action based on performance
-        budget_aware_rewards = {
-            "budgeted_exploration",
-            "lookahead_budgeted_exploration",
-        }
-        if self.config.reward_mode not in budget_aware_rewards and final_average_score < 1e-5:
+        if self.config.reward_mode not in MOVEMENT_AWARE_REWARDS and final_average_score < 1e-5:
             print("Final average score is less than 1e-5. Using turbo acquisition.")
             x_next = env.turbo_acquisition()
         else:

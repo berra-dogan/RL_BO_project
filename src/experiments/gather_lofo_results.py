@@ -49,6 +49,8 @@ COLUMNS = [
     "std_total_raw_move_cost",
     "mean_total_scaled_move_cost",
     "std_total_scaled_move_cost",
+    "mean_decision_time",
+    "std_decision_time",
 ]
 
 
@@ -92,8 +94,14 @@ def parse_args():
             "pure_bo",
             "snake",
             "log_improvement",
+            "log_improvement_movement_cost",
+            "log_improvement_movement_cost2",
+            "log_improvement_movement_cost3",
             "normalized_improvement",
             "optimistic_improvement",
+            "optimistic_improvement_movement_cost",
+            "optimistic_improvement_movement_cost2",
+            "optimistic_improvement_movement_cost3",
             "budgeted_exploration",
             "lookahead_budgeted_exploration",
         ],
@@ -135,6 +143,17 @@ def read_regret_column(csv_path):
     return {"final_regret": regrets[-1], "best_regret": min(regrets)}
 
 
+def read_time_columns(csv_path):
+    with csv_path.open(newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    if not rows or "Avg Time" not in rows[-1]:
+        return None
+    return {
+        "mean_decision_time": float(rows[-1]["Avg Time"]),
+        "std_decision_time": float(rows[-1]["Std Time"]),
+    }
+
+
 def gather_lofo_row(input_root, dimension, horizon, function_name, reward):
     reward_root = (
         input_root
@@ -146,6 +165,16 @@ def gather_lofo_row(input_root, dimension, horizon, function_name, reward):
     best_config = read_json(reward_root / "tuning" / "best_config.json")
     test_config = read_json(reward_root / f"test_{function_name}" / "test_config.json")
     test_result = get(test_config, "test_result", default={}) if test_config else {}
+    # Don't trust test_result["summary_csv"]: it's an absolute path recorded on
+    # whichever machine ran the test (e.g. the cluster), so reconstruct the
+    # local path instead of dereferencing that one.
+    summary_csv = (
+        reward_root
+        / f"test_{function_name}"
+        / f"RL_BO_{dimension}D_{function_name}_h{horizon}.csv"
+    )
+    time_columns = read_time_columns(summary_csv) if summary_csv.exists() else None
+    time_columns = time_columns or {}
 
     return {
         "dimension": dimension,
@@ -168,6 +197,8 @@ def gather_lofo_row(input_root, dimension, horizon, function_name, reward):
         "std_total_raw_move_cost": get(test_result, "std_total_raw_move_cost"),
         "mean_total_scaled_move_cost": get(test_result, "mean_total_scaled_move_cost"),
         "std_total_scaled_move_cost": get(test_result, "std_total_scaled_move_cost"),
+        "mean_decision_time": time_columns.get("mean_decision_time", NAN),
+        "std_decision_time": time_columns.get("std_decision_time", NAN),
     }
 
 
@@ -178,6 +209,9 @@ def gather_flat_grid_row(grid_root, dimension, horizon, function_name, reward):
     summary_csv = function_root / f"RL_BO_{dimension}D_{function_name}_h{horizon}.csv"
     budget = read_json(function_root / "used_budget.json") or {}
     regret = read_regret_column(summary_csv) if summary_csv.exists() else None
+    time_columns = (
+        read_time_columns(summary_csv) if summary_csv.exists() else None
+    ) or {}
 
     return {
         "dimension": dimension,
@@ -198,6 +232,8 @@ def gather_flat_grid_row(grid_root, dimension, horizon, function_name, reward):
         "std_total_raw_move_cost": get(budget, "std_total_raw_move_cost"),
         "mean_total_scaled_move_cost": get(budget, "mean_total_scaled_move_cost"),
         "std_total_scaled_move_cost": get(budget, "std_total_scaled_move_cost"),
+        "mean_decision_time": time_columns.get("mean_decision_time", NAN),
+        "std_decision_time": time_columns.get("std_decision_time", NAN),
     }
 
 

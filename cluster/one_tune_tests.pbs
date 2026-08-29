@@ -1,0 +1,76 @@
+#!/bin/bash
+#PBS -N one_tune_tests
+#PBS -J 0-29
+#PBS -l select=1:ncpus=2:mem=8gb
+#PBS -l walltime=30:00:00
+
+# Test-only run for reward variants whose parameter space in
+# src/experiments/reward_configs.py has a single value per parameter (one config
+# total). Tuning and collection are skipped entirely: --mode test
+# --use-current-params evaluates reward_configs(reward)[0] directly on each
+# held-out function.
+#
+# Grid: FUNCTIONS x HORIZONS x DIMENSIONS = 5 x 2 x 3 = 30 array tasks; each task
+# runs every reward in REWARDS. Results land in the normal LOFO tree
+# (output/leave_one_function_out/...), so scripts/gather_lofo_results_local.sh
+# picks them up. best_config.json is absent for these -> their rows show
+# best_config_found=False / config_id=nan with test metrics still populated.
+#
+# Prefer scripts/one_tune_tests_cluster.sh, which sets these and the -J range for
+# you. To qsub directly, override via `-v` (space- or colon-separated lists):
+#   REWARDS, TEST_FUNCTIONS, TEST_DIMENSIONS, TEST_HORIZONS, LOFO_OUTPUT_ROOT
+# and pass -J 0-N with N = len(FUNCTIONS)*len(HORIZONS)*len(DIMENSIONS) - 1
+# (the #PBS -J above is only the default for the built-in 5x2x3 grid).
+
+set -euo pipefail
+cd "$PBS_O_WORKDIR"
+
+module purge
+module load tools/prod
+module load Python/3.11.3-GCCcore-12.3.0
+source .venv/bin/activate
+
+export OMP_NUM_THREADS=2
+export MKL_NUM_THREADS=2
+export OPENBLAS_NUM_THREADS=2
+
+PYTHON=".venv/bin/python"
+OUTPUT_ROOT="${LOFO_OUTPUT_ROOT:-../output/leave_one_function_out}"
+IFS=': ' read -ra REWARDS    <<< "${REWARDS:-log_improvement_movement_cost2 optimistic_improvement_movement_cost2}"
+IFS=': ' read -ra FUNCTIONS  <<< "${TEST_FUNCTIONS:-ackley sphere sum_square levy rosenbrock}"
+IFS=': ' read -ra DIMENSIONS <<< "${TEST_DIMENSIONS:-3 5 10}"
+IFS=': ' read -ra HORIZONS   <<< "${TEST_HORIZONS:-3 5}"
+
+GLOBAL_INDEX="${PBS_ARRAY_INDEX:?PBS_ARRAY_INDEX is required}"
+JOBS_PER_HORIZON=${#FUNCTIONS[@]}
+JOBS_PER_DIMENSION=$((JOBS_PER_HORIZON * ${#HORIZONS[@]}))
+
+DIMENSION_INDEX=$((GLOBAL_INDEX / JOBS_PER_DIMENSION))
+WITHIN_DIMENSION=$((GLOBAL_INDEX % JOBS_PER_DIMENSION))
+HORIZON_INDEX=$((WITHIN_DIMENSION / JOBS_PER_HORIZON))
+FUNCTION_INDEX=$((WITHIN_DIMENSION % JOBS_PER_HORIZON))
+
+if [ "$DIMENSION_INDEX" -ge "${#DIMENSIONS[@]}" ]; then
+  echo "Array index $GLOBAL_INDEX is outside the dimension/horizon/function grid" >&2
+  exit 1
+fi
+
+TEST_FUNCTION="${FUNCTIONS[$FUNCTION_INDEX]}"
+DIMENSION="${DIMENSIONS[$DIMENSION_INDEX]}"
+HORIZON="${HORIZONS[$HORIZON_INDEX]}"
+
+echo "array_index=$GLOBAL_INDEX"
+echo "dimension=$DIMENSION"
+echo "horizon=$HORIZON"
+echo "held_out_function=$TEST_FUNCTION"
+echo "rewards=${REWARDS[*]}"
+
+"$PYTHON" src/experiments/run_leave_one_function_out.py \
+  --mode test --use-current-params \
+  --test-function "$TEST_FUNCTION" \
+  --dimension "$DIMENSION" \
+  --horizon "$HORIZON" \
+  --reward "${REWARDS[@]}" \
+  --output-root "$OUTPUT_ROOT" \
+  --device cpu \
+  --skip-existing

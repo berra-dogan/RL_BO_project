@@ -70,8 +70,13 @@ class BOEngine:
             )
             x_scaler, y_scaler = Scaler(), Scaler()
             if config.acquisition == "pure_bo":
+                pure_bo_restarts = (
+                    config.pure_bo_restarts
+                    if config.pure_bo_restarts is not None
+                    else 5 * config.dimension
+                )
                 acq_func = PureBO(
-                    n_restarts=config.pure_bo_restarts,
+                    n_restarts=pure_bo_restarts,
                     xi=config.pure_bo_xi,
                     device=config.device,
                 )
@@ -147,7 +152,7 @@ def parse_args():
     parser.add_argument("--output-dir", default="results", help="Directory for per-run CSVs and summary output.")
     parser.add_argument("--aggregate-only", action="store_true", help="Skip execution and aggregate existing per-run results.")
     parser.add_argument("--dimension", type=int, default=None)
-    parser.add_argument("--test-func", choices=("ackley", "sphere", "sum_square", "levy", "rosenbrock"), default=None)
+    parser.add_argument("--test-func", choices=("ackley", "sphere", "sum_square", "levy", "rosenbrock", "rastrigin", "schwefel", "michalewicz"), default=None)
     parser.add_argument("--num-experiments", type=int, default=None)
     parser.add_argument("--num-initial-data", type=int, default=None)
     parser.add_argument("--lower-bound", type=float, default=None)

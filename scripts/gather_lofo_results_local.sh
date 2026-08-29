@@ -8,7 +8,7 @@ source scripts/lofo_defaults.sh
 INPUT_ROOT="${INPUT_ROOT:-output/leave_one_function_out}"
 EARLBO_ROOT="${EARLBO_ROOT:-output/earlbo_grid}"
 PURE_BO_ROOT="${PURE_BO_ROOT:-output/pure_bo_grid}"
-OUTPUT="${OUTPUT:-$INPUT_ROOT/summary/lofo_comparison.csv}"
+OUTPUT="${OUTPUT:-src/summary/lofo_comparison.csv}"
 read -ra DIMENSIONS <<< "${DIMENSIONS:-$LOFO_DEFAULT_DIMENSION}"
 read -ra HORIZONS <<< "${HORIZONS:-$LOFO_DEFAULT_HORIZON}"
 read -ra FUNCTIONS <<< "${FUNCTIONS:-$LOFO_DEFAULT_FUNCTIONS}"

@@ -1,0 +1,48 @@
+#!/bin/bash
+#PBS -N lofo_collect_single
+#PBS -l select=1:ncpus=2:mem=8gb
+#PBS -l walltime=01:00:00
+
+# Non-array version of collect_leave_one_function_out.pbs: the "collect" stage
+# just aggregates already-finished tuning result.json files (no experiments run),
+# so it's cheap enough to loop over the whole dimension x horizon x function grid
+# in one job instead of submitting one array subjob per fold. Prefer this when
+# you just want best_config.json for one (or a few) rewards without waiting on
+# 30 separate queue slots.
+
+set -euo pipefail
+cd "$PBS_O_WORKDIR"
+
+module purge
+module load tools/prod
+module load Python/3.11.3-GCCcore-12.3.0
+source .venv/bin/activate
+
+export OMP_NUM_THREADS=2
+export MKL_NUM_THREADS=2
+export OPENBLAS_NUM_THREADS=2
+
+source scripts/lofo_defaults.sh
+
+PYTHON=".venv/bin/python"
+OUTPUT_ROOT="${LOFO_OUTPUT_ROOT:-../output/leave_one_function_out}"
+IFS=: read -ra FUNCTIONS <<< "${LOFO_FUNCTIONS:-${LOFO_DEFAULT_FUNCTIONS// /:}}"
+IFS=: read -ra DIMENSIONS <<< "${LOFO_DIMENSIONS:-$LOFO_DEFAULT_DIMENSION}"
+IFS=: read -ra HORIZONS <<< "${LOFO_HORIZONS:-${LOFO_DEFAULT_HORIZON// /:}}"
+IFS=: read -ra REWARDS <<< "${LOFO_REWARDS:-${LOFO_DEFAULT_REWARDS// /:}}"
+REWARD_ARGS=(--reward "${REWARDS[@]}")
+
+for DIMENSION in "${DIMENSIONS[@]}"; do
+  for HORIZON in "${HORIZONS[@]}"; do
+    for TEST_FUNCTION in "${FUNCTIONS[@]}"; do
+      echo "Collecting dimension $DIMENSION, horizon $HORIZON, held-out function $TEST_FUNCTION"
+      "$PYTHON" src/experiments/run_leave_one_function_out.py \
+        --test-function "$TEST_FUNCTION" \
+        --dimension "$DIMENSION" \
+        --horizon "$HORIZON" \
+        "${REWARD_ARGS[@]}" \
+        --mode collect \
+        --output-root "$OUTPUT_ROOT"
+    done
+  done
+done
