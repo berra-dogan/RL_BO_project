@@ -25,13 +25,6 @@ REWARD_PARAM_SPACES = {
         "reward_param_scale": [0.1, 1.0, 10.0],
         "reward_param_path_cost_weight": [0.005, 0.01, 0.02],
     },
-    # *_movement_cost2 use the normalized ([0, 1]) relative movement penalty from
-    # src/rewards.py, so path_cost_weight is swept over a much larger range than
-    # the original absolute-penalty variants above.
-    # "log_improvement_movement_cost2": {
-    #     "reward_param_scale": [1.0, 5.0, 10.0],
-    #     "reward_param_path_cost_weight": [0.1, 0.5, 1.0],
-    # },
     "log_improvement_movement_cost2": {
         "reward_param_scale": [10.0],
         "reward_param_path_cost_weight": [0.1],
@@ -44,16 +37,10 @@ REWARD_PARAM_SPACES = {
         "reward_param_std_weight": [0.1, 0.5, 1.0],
         "reward_param_path_cost_weight": [0.005, 0.01, 0.02],
     },
-    # "optimistic_improvement_movement_cost2": {
-    #     "reward_param_std_weight": [0.1, 0.5, 1.0],
-    #     "reward_param_path_cost_weight": [0.1, 0.5, 1.0],
-    # },
-        "optimistic_improvement_movement_cost2": {
+    "optimistic_improvement_movement_cost2": {
         "reward_param_std_weight": [1.0],
         "reward_param_path_cost_weight": [0.1],
     },
-    # Copies of the *_movement_cost2 variants, kept as separate reward modes so
-    # their param spaces / penalty shaping can be varied independently.
     "log_improvement_movement_cost3": {
         "reward_param_scale": [1.0, 5.0, 10.0],
         "reward_param_path_cost_weight": [0.1, 0.5, 1.0],
