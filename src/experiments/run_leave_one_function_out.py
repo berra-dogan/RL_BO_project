@@ -521,8 +521,10 @@ def main():
     if args.all_functions:
         if args.mode != "test":
             raise ValueError("--all-functions can only be used with --mode test")
-        if args.use_current_params:
-            raise ValueError("--all-functions is incompatible with --use-current-params")
+        # --use-current-params is allowed here: for a reward whose parameter
+        # space is a single config there is nothing to select, so "the
+        # all-functions config" is just the current singleton params. Results
+        # still land in all_functions/<reward>/test_<fn>/.
     if args.test_function in EXTRA_EVAL_FUNCTIONS and not (
         args.mode == "test" and args.all_functions
     ):

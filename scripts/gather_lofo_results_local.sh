@@ -12,6 +12,8 @@ OUTPUT="${OUTPUT:-src/summary/lofo_comparison.csv}"
 read -ra DIMENSIONS <<< "${DIMENSIONS:-$LOFO_DEFAULT_DIMENSION}"
 read -ra HORIZONS <<< "${HORIZONS:-$LOFO_DEFAULT_HORIZON}"
 read -ra FUNCTIONS <<< "${FUNCTIONS:-$LOFO_DEFAULT_FUNCTIONS}"
+# Never-held-out generalisation targets, gathered from the all_functions/ tree.
+read -ra COMPLEX_FUNCTIONS <<< "${COMPLEX_FUNCTIONS:-rastrigin schwefel michalewicz}"
 # pure_bo is never tuned through the LOFO pipeline (it's a fixed analytic
 # baseline, not a --reward-mode), so it isn't in LOFO_DEFAULT_REWARDS; add it
 # here unless the caller passed an explicit REWARDS list.
@@ -36,5 +38,6 @@ fi
   --dimensions "${DIMENSIONS[@]}" \
   --horizons "${HORIZONS[@]}" \
   --functions "${FUNCTIONS[@]}" \
+  --complex-functions "${COMPLEX_FUNCTIONS[@]}" \
   --rewards "${REWARDS[@]}" \
   --output "$OUTPUT"

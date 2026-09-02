@@ -33,13 +33,16 @@ FUNCTIONS_CSV="$(IFS=:; echo "${FUNCTIONS[*]}")"
 DIMENSIONS_CSV="$(IFS=:; echo "${DIMENSIONS[*]}")"
 HORIZONS_CSV="$(IFS=:; echo "${HORIZONS[*]}")"
 
+ALL_FUNCTIONS="${ALL_FUNCTIONS:-0}"
+
 echo "Submitting $TOTAL_JOBS one-config test tasks (each runs every reward)"
 echo "Rewards: ${REWARDS_ARR[*]}"
 echo "Dimensions: ${DIMENSIONS[*]}"
 echo "Horizons: ${HORIZONS[*]}"
-echo "Held-out functions: ${FUNCTIONS[*]}"
+echo "Test functions: ${FUNCTIONS[*]}"
+echo "All-functions tree: ${ALL_FUNCTIONS}"
 
 qsub \
   -J "0-$LAST_INDEX" \
-  -v "REWARDS=$REWARDS_CSV,TEST_FUNCTIONS=$FUNCTIONS_CSV,TEST_DIMENSIONS=$DIMENSIONS_CSV,TEST_HORIZONS=$HORIZONS_CSV,LOFO_OUTPUT_ROOT=$OUTPUT_ROOT" \
+  -v "REWARDS=$REWARDS_CSV,TEST_FUNCTIONS=$FUNCTIONS_CSV,TEST_DIMENSIONS=$DIMENSIONS_CSV,TEST_HORIZONS=$HORIZONS_CSV,LOFO_OUTPUT_ROOT=$OUTPUT_ROOT,ALL_FUNCTIONS=$ALL_FUNCTIONS" \
   cluster/one_tune_tests.pbs

@@ -41,6 +41,15 @@ IFS=': ' read -ra FUNCTIONS  <<< "${TEST_FUNCTIONS:-ackley sphere sum_square lev
 IFS=': ' read -ra DIMENSIONS <<< "${TEST_DIMENSIONS:-3 5 10}"
 IFS=': ' read -ra HORIZONS   <<< "${TEST_HORIZONS:-3 5}"
 
+# ALL_FUNCTIONS=1 evaluates the single config as the "trained on all functions"
+# config, writing to all_functions/<reward>/test_<fn>/ instead of the held-out
+# fold tree. Required when TEST_FUNCTIONS includes the never-tuned-on complex
+# targets (rastrigin/schwefel/michalewicz).
+ALL_FUNCTIONS_FLAG=()
+if [ "${ALL_FUNCTIONS:-0}" = "1" ]; then
+  ALL_FUNCTIONS_FLAG=(--all-functions)
+fi
+
 GLOBAL_INDEX="${PBS_ARRAY_INDEX:?PBS_ARRAY_INDEX is required}"
 JOBS_PER_HORIZON=${#FUNCTIONS[@]}
 JOBS_PER_DIMENSION=$((JOBS_PER_HORIZON * ${#HORIZONS[@]}))
@@ -66,7 +75,7 @@ echo "held_out_function=$TEST_FUNCTION"
 echo "rewards=${REWARDS[*]}"
 
 "$PYTHON" src/experiments/run_leave_one_function_out.py \
-  --mode test --use-current-params \
+  --mode test --use-current-params "${ALL_FUNCTIONS_FLAG[@]}" \
   --test-function "$TEST_FUNCTION" \
   --dimension "$DIMENSION" \
   --horizon "$HORIZON" \

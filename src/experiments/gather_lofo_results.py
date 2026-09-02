@@ -20,6 +20,18 @@ grids:
         RL_BO_<d>D_<fn>_h<h>.csv
         used_budget.json
 so those rows are read from there instead.
+
+Functions passed as --complex-functions (rastrigin, schwefel, michalewicz by
+default) are never held out — they are only evaluated as pure generalisation
+targets using the "trained on all 5 functions" config, so their rows are read
+from the all_functions tree instead:
+    output/leave_one_function_out/dimension_<d>/horizon_<h>/all_functions/<reward>/
+        tuning/best_config.json
+        test_<fn>/test_config.json
+(earlbo / pure_bo complex rows still come from the flat grids above.)
+
+Every row carries a "selection" column: leave_one_function_out, all_functions,
+or flat_grid.
 """
 
 import argparse
@@ -35,6 +47,7 @@ COLUMNS = [
     "horizon",
     "held_out_function",
     "reward",
+    "selection",
     "best_config_found",
     "config_id",
     "mean_rank",
@@ -85,6 +98,15 @@ def parse_args():
         "--functions",
         nargs="+",
         default=["ackley", "sphere", "sum_square", "levy", "rosenbrock"],
+        help="Held-out functions, read from the held_out_<fn>/ LOFO tree.",
+    )
+    parser.add_argument(
+        "--complex-functions",
+        nargs="*",
+        default=["rastrigin", "schwefel", "michalewicz"],
+        help="Never-held-out generalisation targets, read from the "
+        "all_functions/<reward>/test_<fn>/ tree (earlbo/pure_bo still from the "
+        "flat grids). Pass with no values to skip them.",
     )
     parser.add_argument(
         "--rewards",
@@ -154,14 +176,12 @@ def read_time_columns(csv_path):
     }
 
 
-def gather_lofo_row(input_root, dimension, horizon, function_name, reward):
-    reward_root = (
-        input_root
-        / f"dimension_{dimension}"
-        / f"horizon_{horizon}"
-        / f"held_out_{function_name}"
-        / reward
-    )
+def gather_tuned_row(reward_root, dimension, horizon, function_name, reward, selection):
+    """Row for a reward tuned through the LOFO pipeline: either a held-out fold
+    (selection="leave_one_function_out") or the "trained on all 5 functions"
+    config (selection="all_functions"). Both layouts share the same
+    tuning/best_config.json + test_<fn>/test_config.json shape; only reward_root
+    differs."""
     best_config = read_json(reward_root / "tuning" / "best_config.json")
     test_config = read_json(reward_root / f"test_{function_name}" / "test_config.json")
     test_result = get(test_config, "test_result", default={}) if test_config else {}
@@ -181,6 +201,7 @@ def gather_lofo_row(input_root, dimension, horizon, function_name, reward):
         "horizon": horizon,
         "held_out_function": function_name,
         "reward": reward,
+        "selection": selection,
         "best_config_found": best_config is not None,
         "config_id": get(best_config, "config_id"),
         "mean_rank": get(best_config, "mean_rank"),
@@ -202,6 +223,33 @@ def gather_lofo_row(input_root, dimension, horizon, function_name, reward):
     }
 
 
+def gather_lofo_row(input_root, dimension, horizon, function_name, reward):
+    reward_root = (
+        input_root
+        / f"dimension_{dimension}"
+        / f"horizon_{horizon}"
+        / f"held_out_{function_name}"
+        / reward
+    )
+    return gather_tuned_row(
+        reward_root, dimension, horizon, function_name, reward,
+        "leave_one_function_out",
+    )
+
+
+def gather_all_functions_row(input_root, dimension, horizon, function_name, reward):
+    reward_root = (
+        input_root
+        / f"dimension_{dimension}"
+        / f"horizon_{horizon}"
+        / "all_functions"
+        / reward
+    )
+    return gather_tuned_row(
+        reward_root, dimension, horizon, function_name, reward, "all_functions",
+    )
+
+
 def gather_flat_grid_row(grid_root, dimension, horizon, function_name, reward):
     function_root = (
         grid_root / f"dimension_{dimension}" / f"horizon_{horizon}" / function_name
@@ -218,6 +266,7 @@ def gather_flat_grid_row(grid_root, dimension, horizon, function_name, reward):
         "horizon": horizon,
         "held_out_function": function_name,
         "reward": reward,
+        "selection": "flat_grid",
         "best_config_found": False,
         "config_id": NAN,
         "mean_rank": NAN,
@@ -238,12 +287,19 @@ def gather_flat_grid_row(grid_root, dimension, horizon, function_name, reward):
 
 
 def gather_rows(
-    input_root, flat_grid_roots, dimensions, horizons, functions, rewards
+    input_root, flat_grid_roots, dimensions, horizons, functions,
+    complex_functions, rewards,
 ):
+    # complex_functions are never held out; if one is also passed in functions,
+    # the held-out fold wins and it isn't gathered twice.
+    complex_functions = [f for f in complex_functions if f not in set(functions)]
+    plan = [(f, gather_lofo_row) for f in functions]
+    plan += [(f, gather_all_functions_row) for f in complex_functions]
+
     rows = []
     for dimension in dimensions:
         for horizon in horizons:
-            for function_name in functions:
+            for function_name, tuned_row in plan:
                 for reward in rewards:
                     if reward in flat_grid_roots:
                         rows.append(
@@ -257,7 +313,7 @@ def gather_rows(
                         )
                     else:
                         rows.append(
-                            gather_lofo_row(
+                            tuned_row(
                                 input_root, dimension, horizon, function_name, reward
                             )
                         )
@@ -292,6 +348,7 @@ def main():
         args.dimensions,
         args.horizons,
         args.functions,
+        args.complex_functions,
         args.rewards,
     )
     write_csv(output, rows, COLUMNS)
@@ -299,9 +356,11 @@ def main():
     total = len(rows)
     found_best = sum(1 for row in rows if row["best_config_found"])
     found_test = sum(1 for row in rows if row["test_config_found"])
+    complex_rows = sum(1 for row in rows if row["selection"] == "all_functions")
     print(f"Wrote {total} rows to {output}")
     print(f"best_config.json found: {found_best}/{total}")
     print(f"test_config.json found: {found_test}/{total}")
+    print(f"all_functions (complex-target) rows: {complex_rows}/{total}")
 
 
 if __name__ == "__main__":
