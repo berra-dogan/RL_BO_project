@@ -1,5 +1,56 @@
 import numpy as np
 
+# --- Search domain per function -------------------------------------------------
+# Functions not listed here inherit the experiment bounds (the LOFO / earlbo /
+# pure_bo pipelines all run on [-1, 1]^d), which is fine for the five smooth /
+# valley benchmarks. The three harder functions below MUST use their canonical
+# domains: on a small symmetric box Schwefel's optimum (x* ~= 420.97) is entirely
+# outside the search region, and Rastrigin / Michalewicz collapse to
+# unrepresentative sub-instances. These override whatever bounds are passed in.
+CANONICAL_DOMAINS = {
+    "rastrigin": (-5.12, 5.12),
+    "schwefel": (-500.0, 500.0),
+    "michalewicz": (0.0, float(np.pi)),
+}
+
+# Best attainable value of real(x) over the search domain, used as the regret
+# reference: regret = REFERENCE_OPTIMUM - max(y seen so far).
+#   - ackley/sphere/sum_square/levy/rosenbrock/rastrigin: real == -(f_standard),
+#     f_standard has minimum 0 at an interior point, so real attains 0.
+#   - schwefel: on its full [-500, 500] domain f_standard reaches ~0 at
+#     x* ~= 420.97, so real attains ~0 (residual < 1.3e-4 * d from the 418.9829
+#     constant); treated as 0.
+#   - michalewicz (m=10): real == -(f_standard); f_standard's known minimum is
+#     negative and dimension-dependent, so real attains |f_min|. Values below are
+#     the accepted optima for the dimensions this project runs (Molga & Smutnicki;
+#     Vanaret et al. 2020 for d=10; d=3 is the commonly cited -2.7603947).
+_MICHALEWICZ_OPTIMA = {
+    2: 1.8013034,
+    3: 2.7603947,
+    5: 4.687658,
+    10: 9.6601517,
+}
+
+
+def search_domain(name):
+    """(lower, upper) canonical bounds for `name`, or None to use config bounds."""
+    return CANONICAL_DOMAINS.get(name.lower())
+
+
+def reference_optimum(name, dimension):
+    """max of real(x) over the search domain (the regret reference)."""
+    key = name.lower()
+    if key == "michalewicz":
+        try:
+            return _MICHALEWICZ_OPTIMA[dimension]
+        except KeyError:
+            raise KeyError(
+                f"No Michalewicz optimum tabulated for dimension {dimension}; "
+                "add it to _MICHALEWICZ_OPTIMA in objective_functions.py."
+            )
+    return 0.0
+
+
 class ObjectiveFunctions:
     def __init__(self, dimension):
         self.functions = {
@@ -73,9 +124,9 @@ class Rastrigin:
         return -rastrigin
 
 class Schwefel:
-    """Standard global optimum sits near x_i=420.9687, far outside this
-    codebase's default [-2, 2]-scale search bounds -- calibrate bounds/budget
-    before using this in real experiments."""
+    """Global optimum sits near x_i=420.9687, so the search domain MUST be the
+    canonical [-500, 500] (enforced via CANONICAL_DOMAINS); on a small box the
+    418.9829*d offset dominates and the optimum is unreachable."""
     def __init__(self, dimension):
         self.dimension = dimension
 
@@ -84,9 +135,11 @@ class Schwefel:
         return -schwefel
 
 class Michalewicz:
-    """Standard domain is [0, pi] per dimension, unlike this codebase's
-    default symmetric [-2, 2]-scale search bounds -- calibrate bounds/budget
-    before using this in real experiments."""
+    """real(x) = +sum sin(x) sin(i x^2/pi)^(2m) == -(standard Michalewicz), so
+    maximising real (as the framework does) minimises the standard function --
+    same orientation as the other benchmarks. Its optimum is a positive,
+    dimension-dependent value (not 0); see reference_optimum(). Canonical domain
+    is [0, pi] per dimension, enforced via CANONICAL_DOMAINS."""
     def __init__(self, dimension, m=10):
         self.dimension = dimension
         self.m = m

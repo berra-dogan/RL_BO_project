@@ -1,7 +1,7 @@
 from rl_bo import RL_BO
 from pure_bo import PureBO
 from utils import Scaler
-from objective_functions import ObjectiveFunctions
+from objective_functions import ObjectiveFunctions, reference_optimum, search_domain
 from config import ExperimentConfig, GPRConfig, PPOConfig, RLBOConfig
 from experiments.used_budget import write_used_budget_summary
 from rewards import available_reward_modes
@@ -40,6 +40,7 @@ class BOEngine:
                 torch.cuda.manual_seed_all(seed)
             obj_funcs = ObjectiveFunctions(config.dimension)
             test_func = obj_funcs.functions[config.test_func_name] # Uses robust getter
+            ref_optimum = reference_optimum(config.test_func_name, config.dimension)
 
             if initial_state is not None:
                 x_train = initial_state["x_train"]
@@ -123,7 +124,15 @@ class BOEngine:
                 
                 x_train = np.vstack((x_train, x_next))
                 y_train = np.vstack((y_train, y_next))
-                regrets.append(0 - np.max(y_train)) # Assuming global max is 0
+                regret = ref_optimum - float(np.max(y_train))
+                if regret < -1e-6:
+                    print(
+                        f"[warn] negative regret {regret:.3e} for "
+                        f"{config.test_func_name} d={config.dimension}: reference "
+                        f"optimum {ref_optimum} is below an observed value; update "
+                        f"reference_optimum() in objective_functions.py"
+                    )
+                regrets.append(max(0.0, regret))
                 scaled_move_costs.append(float(move_cost))
                 raw_move_costs.append(float(raw_move_cost))
 
@@ -217,6 +226,17 @@ def build_configs(args):
         config.lower_bound = args.lower_bound
     if args.upper_bound is not None:
         config.upper_bound = args.upper_bound
+    # Schwefel / Rastrigin / Michalewicz are only meaningful on their canonical
+    # domains; enforce them regardless of the bounds the pipeline passes.
+    domain = search_domain(config.test_func_name)
+    if domain is not None and (config.lower_bound, config.upper_bound) != domain:
+        if args.lower_bound is not None or args.upper_bound is not None:
+            print(
+                f"[info] ignoring requested bounds "
+                f"({config.lower_bound}, {config.upper_bound}); using canonical "
+                f"{config.test_func_name} domain {domain}"
+            )
+        config.lower_bound, config.upper_bound = domain
     if args.horizon is not None:
         config.horizon = args.horizon
     if args.acquisition is not None:

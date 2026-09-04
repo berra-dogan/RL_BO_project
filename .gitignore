@@ -16,3 +16,4 @@ venv/
 .claude
 
 output/
+report/
