@@ -19,83 +19,118 @@ From the repository root:
 python src/main.py
 ```
 
-This writes a CSV file named like:
+This writes per-run CSVs and an aggregate summary named like:
 
 `RL_BO_<dimension>D_<function>_h<horizon>.csv`
 
-## Notes
-
-- Main experiment config is in `src/config.py`.
-- Objective functions are in `src/objective_functions.py`.
-- Reward functions are registered in `src/rewards.py`. Add a function there and include it in `REWARD_FUNCTIONS` to make it available through `--reward-mode`.
-- TuRBO code is under `src/turbo/`.
-- Cluster PBS submission scripts are in `cluster/`.
-- Local helper scripts are in `scripts/`.
-- See `docs/CLUSTER_WORKFLOW.md` for the Imperial cluster workflow.
-
-## Editing Tuning Parameters
-
-All tuning/test parameters for the leave-one-function-out pipeline live in two
-Python files:
-
-- `src/experiments/experiment_runner.py`: `BASE_SETTINGS` (shared experiment
-  settings, including the default `dimension`), `SEARCH_SPACE` (shared PPO/GP
-  hyperparameter grid), and `TUNE_BUDGET`/`TEST_BUDGET` (how many runs/BO
-  iterations tuning vs. testing use).
-- `src/experiments/reward_configs.py`: `REWARD_PARAM_SPACES`, the per-reward
-  parameter grid (e.g. `snake_path_cost_weight` for `snake`).
-
-The default objective dimension is `2`, meant for fast initial experimentation;
-raise it in `BASE_SETTINGS["dimension"]` once the pipeline is validated.
-
-Shell/PBS script defaults (which functions, rewards, and dimension to run by
-default) are centralized in `scripts/lofo_defaults.sh` instead of being
-duplicated across scripts.
-
-## Reward Function Sweeps
-
-Run one reward directly:
+Choose the acquisition with `--acquisition {rl_bo,pure_bo}` and the reward
+shaping with `--reward-mode <name>`, plus `--reward-param KEY=VALUE` (repeatable)
+or `--reward-params-json '{...}'`. For example:
 
 ```bash
 python src/main.py --reward-mode optimistic_improvement --reward-param std_weight=0.2
 ```
 
-```python
-SEARCH_SPACE = {
-    "max_episodes": [120],
-    "ppo_learning_rate": [1e-4, 2e-4],
-    ...
-}
+## Layout
+
+- Experiment config / hyperparameter dataclasses: `src/config.py`.
+- Objective functions: `src/objective_functions.py` — five smooth benchmarks
+  (`ackley`, `sphere`, `sum_square`, `levy`, `rosenbrock`) plus
+  `rastrigin` / `schwefel` / `michalewicz`, which are never tuned on and are
+  only used as generalisation targets on their canonical domains.
+- Reward functions: registered in `src/rewards.py`. Add a function and an entry
+  in `REWARD_FUNCTIONS` to expose it through `--reward-mode`.
+- TuRBO acquisition code: `src/turbo/`.
+- Experiment pipeline: `src/experiments/`.
+- Cluster PBS jobs: `cluster/`; login-node submission wrappers: `scripts/`.
+
+## Cluster workflow
+
+From the Mac, sync the repo up:
+
+```bash
+./scripts/sync_to_cluster.sh
 ```
 
-## Leave-One-Function-Out Evaluation
+From the cluster login node, submit the full tune → collect → test chain:
 
-Tune on four benchmark functions and test on the held-out fifth function:
+```bash
+bash scripts/submit_leave_one_function_out_cluster.sh
+```
+
+Defaults (dimensions, horizons, functions, rewards) live in
+`scripts/lofo_defaults.sh`. Override per run with the `DIMENSIONS` / `HORIZONS`
+/ `REWARDS` environment variables, or pass held-out function names as positional
+arguments.
+
+## Editing tuning parameters
+
+All tuning/test parameters for the leave-one-function-out pipeline live in two
+Python files:
+
+- `src/experiments/experiment_runner.py`: `BASE_SETTINGS` (shared experiment
+  settings, including the fallback `dimension` and `horizon`), `SEARCH_SPACE`
+  (shared PPO/GP hyperparameter grid), and `TEST_BUDGET` / `tune_budget()` (how
+  many runs and BO iterations testing vs. tuning use).
+- `src/experiments/reward_configs.py`: `REWARD_PARAM_SPACES`, the per-reward
+  parameter grid (e.g. `snake_path_cost_weight` for `snake`).
+
+`BASE_SETTINGS["dimension"]` / `["horizon"]` are only the fallback for a bare
+`python src/experiments/run_leave_one_function_out.py`; every script passes an
+explicit grid from `scripts/lofo_defaults.sh`.
+
+## Leave-One-Function-Out evaluation
+
+Tune on all benchmark functions except one, then test on the held-out function:
 
 ```bash
 python src/experiments/run_leave_one_function_out.py \
   --test-function ackley \
   --dimension 10 \
+  --horizon 3 \
   --reward earlbo snake \
   --mode all \
   --skip-existing
 ```
 
-For cluster arrays, print the flattened tuning-job count and run individual
-indices with `--mode tune --index <index>`. After all indexed jobs complete,
-run `--mode collect` followed by `--mode test`.
+`--mode all` runs tune + collect + test in one process. On the cluster this is
+split across array jobs: `--print-total` reports the flattened tuning-job count,
+`--mode tune --index <i>` runs one job, and `--mode collect` then `--mode test`
+aggregate and evaluate. Tuning is fold-independent — a single shared pool of
+`(dimension, horizon, reward, config, function)` runs is written under
+`_shared_tuning/` and reused by every held-out fold.
 
-Results are grouped by dimension and held-out function:
-`output/leave_one_function_out/dimension_<n>/held_out_<function>/`.
+Per-fold results are grouped by dimension, horizon, held-out function and
+reward:
+
+```
+output/leave_one_function_out/dimension_<n>/horizon_<h>/held_out_<function>/<reward>/
+    tuning/best_config.json
+    test_<function>/test_config.json
+```
 
 To skip tuning and test the singleton values currently defined in
-`REWARD_PARAM_SPACES` and `SEARCH_SPACE`, add `--use-current-params`:
+`REWARD_PARAM_SPACES` / `SEARCH_SPACE`, add `--use-current-params`:
 
 ```bash
 python src/experiments/run_leave_one_function_out.py \
-  --test-function ackley \
-  --dimension 10 \
-  --reward snake earlbo \
-  --mode test \
-  --use-current-params
+  --test-function ackley --dimension 10 --horizon 3 \
+  --reward snake earlbo --mode test --use-current-params
 ```
+
+## Baselines and results aggregation
+
+- `earlbo` and `pure_bo` are run outside the LOFO tree as flat grids
+  (`scripts/submit_earlbo_grid_cluster.sh`,
+  `scripts/submit_pure_bo_grid_cluster.sh`) into `output/earlbo_grid/` and
+  `output/pure_bo_grid/`.
+- `python src/experiments/summarize_earlbo_grid.py` regenerates
+  `src/experiments/earlbo_avg_scaled_move_cost.py`, the per-`(function,
+  dimension, horizon)` movement-budget calibration used by the
+  budgeted-exploration rewards.
+- `src/experiments/collect_all_functions.py` picks one "trained on all five
+  functions" config per `(dimension, horizon, reward)` by re-ranking the
+  existing tuning runs (no new experiments).
+- `src/experiments/gather_lofo_results.py` (wrapper:
+  `scripts/gather_lofo_results_local.sh`) collects every LOFO / all-functions /
+  baseline cell into `src/summary/lofo_comparison.csv`.
