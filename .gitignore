@@ -16,5 +16,4 @@ venv/
 .claude
 
 output/
-report/
 src/summary/compare_optimistic_improvement_movement_cost2_vs_optimistic_improvement_movement_cost3.csv
