@@ -15,7 +15,7 @@ import time
 import csv
 import json
 from sklearn.gaussian_process import GaussianProcessRegressor
-from sklearn.gaussian_process.kernels import RBF, WhiteKernel, Matern
+from sklearn.gaussian_process.kernels import RBF, WhiteKernel
 
 
 class BOEngine:
@@ -60,9 +60,6 @@ class BOEngine:
             gpr_config = config.gpr_config
             kernel = RBF(length_scale=gpr_config.rbf_length_scale, length_scale_bounds=gpr_config.rbf_length_scale_bounds) \
                     + WhiteKernel(noise_level=gpr_config.wk_noise_level, noise_level_bounds=gpr_config.wk_noise_level_bounds)
-
-            # kernel = Matern(length_scale=gpr_config.rbf_length_scale, length_scale_bounds=gpr_config.rbf_length_scale_bounds) \
-            #         + WhiteKernel(noise_level=gpr_config.wk_noise_level, noise_level_bounds=gpr_config.wk_noise_level_bounds)
 
             gpr = GaussianProcessRegressor(
                 kernel=kernel,
